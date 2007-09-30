@@ -1,3 +1,12 @@
+0.54.1
+------
+1. Supply a simple 'mkpkg' script to create packages with checkinstall.
+2. Fix compilation when cmake is called with -DQTC_MODIFY_MOZILLA=true
+3. Dont free() the values returned from gtk_widget_style_get(), use
+   gtk_requisition_free() and gtk_border_free()
+4. Fix frameless groupboxes in Gimp 2.4
+5. After free'ing memory, set var to NULL.
+
 0.54
 ----
 1. Converted buildsystem to CMake.

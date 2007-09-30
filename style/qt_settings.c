@@ -793,7 +793,10 @@ static char * getIconPath()
     len++;
 
     if(path && len!=(strlen(path)+1))
+    {
         free(path);
+        path=NULL;
+    }
 
     if(!path)
         path=(char *)malloc(len+1);
@@ -1148,7 +1151,6 @@ static Atom kipcCommAtom;
 static Atom desktopWindowAtom;
 static Atom knwmCommAtom;
 
-static gboolean init();
 static void qtExit();
 static GdkFilterReturn qtGdkEventFilter(GdkXEvent *xevent, GdkEvent *gevent, gpointer data)
 {
@@ -1635,6 +1637,7 @@ static void qtExit()
         qtSettings.font=NULL;
         if(qtSettings.icons)
             free(qtSettings.icons);
+        qtSettings.icons=NULL;
         if(qtSettings.boldfont)
             free(qtSettings.boldfont);
         qtSettings.boldfont=NULL;
@@ -1697,7 +1700,7 @@ static void qtSetFont(GtkRcStyle *rc_style)
     if(qtSettings.font)
     {
         if (rc_style->font_desc)
-            pango_font_description_free (rc_style->font_desc);
+            pango_font_description_free(rc_style->font_desc);
 
         rc_style->font_desc = pango_font_description_from_string (qtSettings.font);
     }

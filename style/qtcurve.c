@@ -469,7 +469,7 @@ static gboolean isOnButton(GtkWidget *w, int level, gboolean *def)
 }
 
 static void optionMenuGetProps(GtkWidget *widget, GtkRequisition *indicator_size,
-                                      GtkBorder *indicator_spacing)
+                               GtkBorder *indicator_spacing)
 {
     GtkRequisition *tmp_size = NULL;
     GtkBorder      *tmp_spacing = NULL;
@@ -477,21 +477,13 @@ static void optionMenuGetProps(GtkWidget *widget, GtkRequisition *indicator_size
     if(widget)
         gtk_widget_style_get(widget, "indicator_size", &tmp_size, "indicator_spacing", &tmp_spacing,
                              NULL);
-    if(tmp_size)
-    {
-        *indicator_size = *tmp_size;
-        g_free(tmp_size);
-    }
-    else
-        *indicator_size = defaultOptionIndicatorSize;
+    *indicator_size= tmp_size ? *tmp_size : defaultOptionIndicatorSize;
+    *indicator_spacing = tmp_spacing ? *tmp_spacing : defaultOptionIndicatorSpacing;
 
-    if(tmp_spacing)
-    {
-        *indicator_spacing = *tmp_spacing;
-        g_free(tmp_spacing);
-    }
-    else
-        *indicator_spacing = defaultOptionIndicatorSpacing;
+    if (tmp_size)
+        gtk_requisition_free(tmp_size);
+    if (tmp_spacing)
+        gtk_border_free(tmp_spacing);
 }
 
 static gboolean withinRect(GdkRectangle *rect, int x, int y)
@@ -2709,13 +2701,13 @@ debugDisplayWidget(widget, 3);
                         /*else
                             gdk_draw_line(window, qtcurveStyle->background_gc[4], x+width-2, y, x+width-2, y+height-1);*/
 
-                    gdk_draw_line(window, qtcurveStyle->background_gc[5], x, y+height-1,
+                    gdk_draw_line(window, qtcurveStyle->background_gc[QT_STD_BORDER], x, y+height-1,
                                   x+width-1, y+height-1);
                 }
 
                 if(x>3 && height>10)
                 {
-                    gdk_draw_line(window, qtcurveStyle->background_gc[5], x, y+5, x,
+                    gdk_draw_line(window, qtcurveStyle->background_gc[QT_STD_BORDER], x, y+5, x,
                                   y+height-6);
                     gdk_draw_line(window, qtcurveStyle->background_gc[0], x+1, y+5,
                                   x+1, y+height-6);
@@ -2852,22 +2844,22 @@ debugDisplayWidget(widget, 3);
 #ifndef QTC_SIMPLE_SCROLLBARS
                 if(GTK_APP_MOZILLA!=qtSettings.app && slider && SCROLLBAR_NONE==opts.scrollbarType)
                 {
-                    setClipping(qtcurveStyle->background_gc[5], area, NULL);
+                    setClipping(qtcurveStyle->background_gc[QT_STD_BORDER], area, NULL);
                     if(horiz)
                     {
-                        gdk_draw_point(window, qtcurveStyle->background_gc[5], x+1, y);
-                        gdk_draw_point(window, qtcurveStyle->background_gc[5], x+1, y+height-1);
-                        gdk_draw_point(window, qtcurveStyle->background_gc[5], x+width-2, y);
-                        gdk_draw_point(window, qtcurveStyle->background_gc[5], x+width-2, y+height-1);
+                        gdk_draw_point(window, qtcurveStyle->background_gc[QT_STD_BORDER], x+1, y);
+                        gdk_draw_point(window, qtcurveStyle->background_gc[QT_STD_BORDER], x+1, y+height-1);
+                        gdk_draw_point(window, qtcurveStyle->background_gc[QT_STD_BORDER], x+width-2, y);
+                        gdk_draw_point(window, qtcurveStyle->background_gc[QT_STD_BORDER], x+width-2, y+height-1);
                     }
                     else
                     {
-                        gdk_draw_point(window, qtcurveStyle->background_gc[5], x, y+1);
-                        gdk_draw_point(window, qtcurveStyle->background_gc[5], x+width-1, y+1);
-                        gdk_draw_point(window, qtcurveStyle->background_gc[5], x, y+height-2);
-                        gdk_draw_point(window, qtcurveStyle->background_gc[5], x+width-1, y+height-2);
+                        gdk_draw_point(window, qtcurveStyle->background_gc[QT_STD_BORDER], x, y+1);
+                        gdk_draw_point(window, qtcurveStyle->background_gc[QT_STD_BORDER], x+width-1, y+1);
+                        gdk_draw_point(window, qtcurveStyle->background_gc[QT_STD_BORDER], x, y+height-2);
+                        gdk_draw_point(window, qtcurveStyle->background_gc[QT_STD_BORDER], x+width-1, y+height-2);
                     }
-                    unsetClipping(qtcurveStyle->background_gc[5], area, NULL);
+                    unsetClipping(qtcurveStyle->background_gc[QT_STD_BORDER], area, NULL);
                 }
 #endif
             }
@@ -3552,11 +3544,11 @@ debugDisplayWidget(widget, 3);
         {
             gdk_gc_set_clip_rectangle(qtcurveStyle->background_gc[0], area);
             gdk_gc_set_clip_rectangle(qtcurveStyle->background_gc[dark], area);
-            gdk_gc_set_clip_rectangle(qtcurveStyle->background_gc[5], area);
+            gdk_gc_set_clip_rectangle(qtcurveStyle->background_gc[QT_STD_BORDER], area);
             gdk_gc_set_clip_rectangle(style->bg_gc[state], area);
         }
         gdk_draw_rectangle(window, style->bg_gc[state], TRUE, x, y, width-1, height-1);
-        gdk_draw_rectangle(window, qtcurveStyle->background_gc[5], FALSE, x, y, width-1, height-1);
+        gdk_draw_rectangle(window, qtcurveStyle->background_gc[QT_STD_BORDER], FALSE, x, y, width-1, height-1);
         gdk_draw_line(window, qtcurveStyle->background_gc[0], x+1, y+1, x+width-3, y+1);
         gdk_draw_line(window, qtcurveStyle->background_gc[0], x+1, y+1, x+1, y+height-3);
         gdk_draw_line(window, qtcurveStyle->background_gc[dark], x+1, y+height-2, x+width-2, y+height-2);
@@ -3565,7 +3557,7 @@ debugDisplayWidget(widget, 3);
         {
             gdk_gc_set_clip_rectangle(qtcurveStyle->background_gc[0], NULL);
             gdk_gc_set_clip_rectangle(qtcurveStyle->background_gc[dark], NULL);
-            gdk_gc_set_clip_rectangle(qtcurveStyle->background_gc[5], NULL);
+            gdk_gc_set_clip_rectangle(qtcurveStyle->background_gc[QT_STD_BORDER], NULL);
             gdk_gc_set_clip_rectangle(style->bg_gc[state], NULL);
         }
     }
@@ -3663,11 +3655,11 @@ static void gtkDrawShadow(GtkStyle *style, GdkWindow *window, GtkStateType state
                 case GTK_SHADOW_IN:
                 case GTK_SHADOW_ETCHED_IN:
                     gc1 = qtcurveStyle->background_gc[0];
-                    gc2 = qtcurveStyle->background_gc[5];
+                    gc2 = qtcurveStyle->background_gc[QT_STD_BORDER];
                     break;
                 case GTK_SHADOW_OUT:
                 case GTK_SHADOW_ETCHED_OUT:
-                    gc1 = qtcurveStyle->background_gc[5];
+                    gc1 = qtcurveStyle->background_gc[QT_STD_BORDER];
                     gc2 = qtcurveStyle->background_gc[0];
                     break;
             }
@@ -3885,7 +3877,7 @@ debugDisplayWidget(widget, 3);
         if(!qtSettings.qt4 && mnu)
         {
             gdk_gc_set_clip_rectangle(btn_gcs[0], area);
-            gdk_gc_set_clip_rectangle(btn_gcs[5], area);
+            gdk_gc_set_clip_rectangle(btn_gcs[QT_STD_BORDER], area);
             gdk_gc_set_clip_rectangle(btn_gcs[2], area);
         }
         */
@@ -3915,8 +3907,8 @@ debugDisplayWidget(widget, 3);
                              opts.lighterPopupMenuBgnd ? POPUPMENU_LIGHT_FACTOR : 0.0,
                              x_mnu+1, y_mnu+1, width_mnu-2, height_mnu-2);
 
-            gdk_draw_line(window, btn_gcs[5], x_mnu, y_mnu, x_mnu, y_mnu+height_mnu-1);
-            gdk_draw_line(window, btn_gcs[5], x_mnu, y_mnu, x_mnu+width_mnu-1, y_mnu);
+            gdk_draw_line(window, btn_gcs[QT_STD_BORDER], x_mnu, y_mnu, x_mnu, y_mnu+height_mnu-1);
+            gdk_draw_line(window, btn_gcs[QT_STD_BORDER], x_mnu, y_mnu, x_mnu+width_mnu-1, y_mnu);
             gdk_draw_line(window, btn_gcs[0], x_mnu, y_mnu+height_mnu-1, x_mnu+width_mnu-1,
                           y_mnu+height_mnu-1);
             gdk_draw_line(window, btn_gcs[0], x_mnu+width_mnu-1, y_mnu, x_mnu+width_mnu-1,
@@ -3942,7 +3934,7 @@ debugDisplayWidget(widget, 3);
         if(mnu)
         {
             gdk_gc_set_clip_rectangle(btn_gcs[0], NULL);
-            gdk_gc_set_clip_rectangle(btn_gcs[5], NULL);
+            gdk_gc_set_clip_rectangle(btn_gcs[QT_STD_BORDER], NULL);
             gdk_gc_set_clip_rectangle(btn_gcs[2], NULL);
         }
         */
@@ -4027,7 +4019,7 @@ static void gtkDrawOption(GtkStyle *style, GdkWindow *window, GtkStateType state
             if(area)
             {
                 gdk_gc_set_clip_rectangle(style->base_gc[state], area);
-                gdk_gc_set_clip_rectangle(gcs[5], area);
+                gdk_gc_set_clip_rectangle(gcs[QT_STD_BORDER], area);
                 gdk_gc_set_clip_rectangle(gcs[4], area);
                 gdk_gc_set_clip_rectangle(gcs[0], area);
             }
@@ -4084,7 +4076,7 @@ static void gtkDrawOption(GtkStyle *style, GdkWindow *window, GtkStateType state
             if(area)
             {
                 gdk_gc_set_clip_rectangle(style->base_gc[state], NULL);
-                gdk_gc_set_clip_rectangle(gcs[5], NULL);
+                gdk_gc_set_clip_rectangle(gcs[QT_STD_BORDER], NULL);
                 gdk_gc_set_clip_rectangle(gcs[4], NULL);
                 gdk_gc_set_clip_rectangle(gcs[0], NULL);
             }
@@ -4263,15 +4255,17 @@ static void gtkDrawLayout(GtkStyle *style, GdkWindow *window, GtkStateType state
 
         if(GTK_IS_LABEL(widget) && GTK_IS_FRAME(widget->parent) && !isOnStatusBar(widget, 0))
         {
+
+            int diff=widget->allocation.x-widget->parent->allocation.x;
             if(opts.framelessGroupBoxes)
-                x-=QTC_MIN(x, 6);
+                x-=QTC_MAX(0, QTC_MIN(diff, 6));
             else
                 x+=5;
             if(area)
             {
                 area2=*area;
                 if(opts.framelessGroupBoxes)
-                    area2.x-=QTC_MIN(area2.x, 6);
+                    area2.x-=QTC_MAX(0, QTC_MIN(diff, 6));
                 else
                     area2.x+=5;
                 area=&area2;
@@ -4319,7 +4313,7 @@ static void gtkDrawBoxGap(GtkStyle *style, GdkWindow *window, GtkStateType state
     QtCurveStyle *qtcurveStyle = (QtCurveStyle *)style;
     GdkGC    *gc1 = qtcurveStyle->background_gc[0],
              *gc2 = qtcurveStyle->background_gc[APPEARANCE_FLAT==opts.appearance ? ORIGINAL_SHADE : 4],
-             *outer = qtcurveStyle->background_gc[5];
+             *outer = qtcurveStyle->background_gc[QT_STD_BORDER];
     gboolean rev = reverseLayout(widget);
     int      rightPos=(width -(gap_x + gap_width));
 
@@ -4484,7 +4478,7 @@ debugDisplayWidget(widget, 3);
                     *gc2 = NULL,
                     *fill = GTK_STATE_NORMAL==state
                                 ? style->bg_gc[GTK_STATE_NORMAL] : qtcurveStyle->background_gc[2],
-                    *outer = qtcurveStyle->background_gc[5],
+                    *outer = qtcurveStyle->background_gc[QT_STD_BORDER],
                     *selGc1= qtcurveStyle->menuitem_gc[0],
                     *selGc2= qtcurveStyle->menuitem_gc[IS_FLAT(opts.appearance) ? 0 : 3],
                     *midgc = selGc1;
