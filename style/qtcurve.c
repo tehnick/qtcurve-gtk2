@@ -144,6 +144,7 @@ static gboolean useButtonColor(const gchar *detail)
                        0==strcmp(detail, "spinbutton_up") ||
                        0==strcmp(detail, "spinbutton_down") ||
                        0==strcmp(detail, "slider") ||
+                       0==strcmp(detail, "qtc-slider") ||
                        0==strcmp(detail, "vscrollbar") ||
                        0==strcmp(detail, "hscrollbar") ||
                        0==strcmp(detail, "stepper") ||
@@ -597,7 +598,8 @@ static int getRound(const char *detail, GtkWidget *widget, int x, int y, gboolea
                     SCROLLBAR_NONE==opts.scrollbarType ? ROUNDED_ALL :
 #endif
                     ROUNDED_NONE;
-        else if(0==strcmp(detail, "splitter") || 0==strcmp(detail, "optionmenu")  ||
+        else if(0==strcmp(detail, "qtc-slider") ||
+                0==strcmp(detail, "splitter") || 0==strcmp(detail, "optionmenu")  ||
                 0==strcmp(detail, "togglebutton") || 0==strcmp(detail, "hscale") ||
                 0==strcmp(detail, "vscale") || 0==strcmp(detail, QTC_CHECKBOX)
                 /* || 0==strcmp(detail, "paned") || 0==strcmp(detail, QTC_PANED)*/ )
@@ -1175,7 +1177,7 @@ static GdkPixbuf * pixbufCacheValueNew(QtCPixKey *key)
             res=gdk_pixbuf_new_from_inline(-1, radio_on, TRUE, NULL);
             break;
         case PIX_CHECK:
-            res=gdk_pixbuf_new_from_inline(-1, check_on, TRUE, NULL);
+            res=gdk_pixbuf_new_from_inline(-1, opts.xCheck ? check_x_on :check_on, TRUE, NULL);
             break;
         case PIX_SLIDER:
             res=gdk_pixbuf_new_from_inline(-1, slider, TRUE, NULL);
@@ -1299,31 +1301,47 @@ static void drawGradient(GdkWindow *window, GtkStyle *style, GdkRectangle *area,
 }
 
 static void drawBevelGradient(GtkStyle *style, GdkWindow *window,  GdkRectangle *area,
-                              GdkRegion *region, int x, int y, int width,
-                              int height, GdkColor *base, double shade_top, double shade_bot,
-                              gboolean horiz, gboolean increase, gboolean sel, EAppearance bevApp,
-                              EWidget w)
+                              GdkRegion *region, int x, int y, int width, int height, GdkColor *base,
+                              double shadeTop, double shadeBot, gboolean horiz, gboolean increase,
+                              gboolean sel, EAppearance bevApp, EWidget w)
 {
     EAppearance app=APPEARANCE_BEVELLED!=bevApp || WIDGET_BUTTON(w) || WIDGET_LISTVIEW_HEADER==w
                         ? bevApp
                         : APPEARANCE_GRADIENT;
+    gboolean    selected=opts.colorSelTab && (WIDGET_TAB_TOP==w || WIDGET_TAB_BOT==w) ? false : sel;
 
     if(IS_FLAT(bevApp))
         drawAreaColor(style, window, area, region, base, x, y, width, height);
-    else if(!sel && IS_GLASS(app))
+    else if(!selected && (IS_GLASS(app) || APPEARANCE_SPLIT_GRADIENT==app))
     {
         if(WIDGET_TAB_BOT==w)
         {
-            double t=shade_top;
-            shade_top=shade_bot;
-            shade_bot=t;
+            double t=shadeTop;
+            shadeTop=shadeBot;
+            shadeBot=t;
         }
 
         {  /* C variable scoping */
-        double   shadeTopA=WIDGET_TAB_BOT==w ? 1.0 : shade_top*SHADE_GLASS_TOP_A(app, w),
-                 shadeTopB=WIDGET_TAB_BOT==w ? 1.0 : shade_top*SHADE_GLASS_TOP_B(app, w),
-                 shadeBotA=WIDGET_TAB_TOP==w ? 1.0 : shade_bot*SHADE_GLASS_BOT_A(app),
-                 shadeBotB=WIDGET_TAB_TOP==w ? 1.0 : shade_bot*SHADE_GLASS_BOT_B(app);
+        double  shadeTopA=WIDGET_TAB_BOT==w
+                            ? 1.0
+                            : APPEARANCE_SPLIT_GRADIENT==app
+                                ? shadeTop
+                                : shadeTop*SHADE_GLASS_TOP_A(app, w),
+                 shadeTopB=WIDGET_TAB_BOT==w
+                            ? 1.0
+                            : APPEARANCE_SPLIT_GRADIENT==app
+                                ? shadeTop-((shadeTop-shadeBot)*SPLIT_GRADIENT_FACTOR)
+                                : shadeTop*SHADE_GLASS_TOP_B(app, w),
+                 shadeBotA=WIDGET_TAB_TOP==w
+                            ? 1.0
+                            : APPEARANCE_SPLIT_GRADIENT==app
+                                ? shadeBot+((shadeTop-shadeBot)*SPLIT_GRADIENT_FACTOR)
+                                : shadeBot*SHADE_GLASS_BOT_A(app),
+                 shadeBotB=WIDGET_TAB_TOP==w
+                            ? 1.0
+                            : APPEARANCE_SPLIT_GRADIENT==app
+                                ? shadeBot
+                                : shadeBot*SHADE_GLASS_BOT_B(app);
         GdkColor topA,
                  topB,
                  botA,
@@ -1357,7 +1375,7 @@ static void drawBevelGradient(GtkStyle *style, GdkWindow *window,  GdkRectangle 
                         horiz, increase);
         }
     }
-    else if(!sel && APPEARANCE_BEVELLED==app &&
+    else if(!selected && APPEARANCE_BEVELLED==app &&
             ((horiz ? height : width) > (((WIDGET_BUTTON(w) ? 2 : 1)*BEVEL_BORDER(w))+4)))
     {
         if(WIDGET_LISTVIEW_HEADER==w)
@@ -1429,23 +1447,34 @@ static void drawBevelGradient(GtkStyle *style, GdkWindow *window,  GdkRectangle 
     {
         GdkColor top,
                  bot,
+                 tabBaseCol,
+                 *baseTopCol=base,
                  *t,
                  *b;
 
-        top.pixel=bot.pixel=0;
+        top.pixel=bot.pixel=tabBaseCol.pixel=0;
 
-        if(equal(1.0, shade_top))
-            t=base;
+
+        if(opts.colorSelTab && sel && (WIDGET_TAB_TOP==w || WIDGET_TAB_BOT==w))
+        {
+            QtCurveStyle *qtcurveStyle = (QtCurveStyle *)style;
+
+            generateMidColor(base, &(qtcurveStyle->menuitem[0]), &tabBaseCol, QTC_COLOR_SEL_TAB_FACTOR);
+            baseTopCol=&tabBaseCol;
+        }
+
+        if(equal(1.0, shadeTop))
+            t=baseTopCol;
         else
         {
-            shade(base, &top, shade_top);
+            shade(baseTopCol, &top, shadeTop);
             t=&top;
         }
-        if(equal(1.0, shade_bot))
+        if(equal(1.0, shadeBot))
             b=base;
         else
         {
-            shade(base, &bot, shade_bot);
+            shade(base, &bot, shadeBot);
             b=&bot;
         }
 
@@ -1892,10 +1921,11 @@ static void drawLightBevel(GtkStyle *style, GdkWindow *window, GtkStateType stat
 }
 
 static void drawLines(GdkWindow *window, int rx, int ry, int rwidth, int rheight, gboolean horiz,
-                      int n_lines, int offset, GdkGC *gcs[], GdkRectangle *area, int dark, int etchedDisp)
+                      int n_lines, int offset, GdkGC *gcs[], GdkRectangle *area, int dark, int etchedDisp,
+                      gboolean light)
 {
-    int   space =(n_lines*2)+(etchedDisp ? (n_lines-1) : 0),
-          step = etchedDisp ? 3 : 2,
+    int   space =(n_lines*2)+(etchedDisp || !light ? (n_lines-1) : 0),
+          step = etchedDisp || !light ? 3 : 2,
           x = horiz ? rx : rx+((rwidth-space)>>1),
           y = horiz ? ry+((rheight-space)>>1) : ry,
           x2 = rx + rwidth-1,
@@ -1914,16 +1944,18 @@ static void drawLines(GdkWindow *window, int rx, int ry, int rwidth, int rheight
         for(i=0; i<space; i+=step)
             gdk_draw_line(window, gc1, x+offset, y+i, x2-(offset+etchedDisp), y+i);
 
-        for(i=1; i<space; i+=step)
-             gdk_draw_line(window, gc2, x+offset+etchedDisp, y+i, x2-offset, y+i);
+        if(light)
+            for(i=1; i<space; i+=step)
+                gdk_draw_line(window, gc2, x+offset+etchedDisp, y+i, x2-offset, y+i);
     }
     else
     {
         for(i=0; i<space; i+=step)
             gdk_draw_line(window, gc1, x+i, y+offset, x+i, y2-(offset+etchedDisp));
 
-        for(i=1; i<space; i+=step)
-            gdk_draw_line(window, gc2, x+i, y+offset+etchedDisp, x+i, y2-offset);
+        if(light)
+            for(i=1; i<space; i+=step)
+                gdk_draw_line(window, gc2, x+i, y+offset+etchedDisp, x+i, y2-offset);
     }
     if(area)
     {
@@ -2277,11 +2309,14 @@ debugDisplayWidget(widget, 3);
                 break;
             case LINE_SUNKEN:
                 drawLines(window, x, y, width, height, height>width, NUM_SPLITTER_DASHES, 1,
-                          gcs, area, 3, 1);
+                          gcs, area, 3, 1, TRUE);
+            case LINE_FLAT:
+                drawLines(window, x, y, width, height, height>width, NUM_SPLITTER_DASHES, 3,
+                          gcs, area, 3, 0, FALSE);
                 break;
             case LINE_DASHES:
                 drawLines(window, x, y, width, height, height>width, NUM_SPLITTER_DASHES, 1,
-                          gcs, area, 3, 0);
+                          gcs, area, 3, 0, TRUE);
         }
     }
     else if((DETAIL("handlebox") && widget && GTK_IS_HANDLE_BOX(widget)) || DETAIL("dockitem") || paf)
@@ -2326,15 +2361,19 @@ debugDisplayWidget(widget, 3);
                 break;
             case LINE_DASHES:
                 if(height>width)
-                    drawLines(window, x+3, y, 5, height, TRUE, (height-8)/3, 0,
-                              gcs, area, 5, 1);
+                    drawLines(window, x+3, y, 3, height, TRUE, (height-8)/2, 0,
+                              gcs, area, 5, 0, TRUE);
                 else
-                    drawLines(window, x, y+3, width, 5, FALSE, (width-8)/3, 0,
-                              gcs, area, 5, 1);
+                    drawLines(window, x, y+3, width, 3, FALSE, (width-8)/2, 0,
+                              gcs, area, 5, 0, TRUE);
+                break;
+            case LINE_FLAT:
+                drawLines(window, x, y, width, height, height<width, 2, 4, gcs,
+                          area, 4, 0, FALSE);
                 break;
             default:
                 drawLines(window, x, y, width, height, height<width, 2, 4, gcs,
-                          area, 3, 1);
+                          area, 3, 1, TRUE);
         }
     }
 }
@@ -2536,7 +2575,7 @@ static void drawBox(GtkStyle *style, GdkWindow *window, GtkStateType state,
     gboolean custom_c = FALSE,
              pbar=DETAIL("bar") && GTK_IS_PROGRESS_BAR(widget),
              qtc_paned=!pbar && IS_QTC_PANED,
-             slider=!qtc_paned && DETAIL("slider"),
+             slider=!qtc_paned && (DETAIL("slider") || DETAIL("qtc-slider")),
              hscale=!slider && DETAIL("hscale"),
              vscale=!hscale && DETAIL("vscale"),
              menubar=!vscale && DETAIL("menubar"),
@@ -3346,7 +3385,7 @@ debugDisplayWidget(widget, 3);
                    horizPbar=isHorizontalProgressbar(widget);
         int        animShift=-PROGRESS_CHUNK_WIDTH;
 
-        if(pbar && opts.stripedProgress)
+        if(pbar && STRIPE_NONE!=opts.stripedProgress)
         {
             GdkRectangle rect={x, y, width-2, height-2};
             int          stripeOffset;
@@ -3362,37 +3401,72 @@ debugDisplayWidget(widget, 3);
             constrainRect(&rect, area);
             region=gdk_region_rectangle(&rect);
 
-            if(horizPbar)
-                for(stripeOffset=0; stripeOffset<(width+PROGRESS_CHUNK_WIDTH);
-                    stripeOffset+=(PROGRESS_CHUNK_WIDTH*2))
-                {
-                    GdkRectangle inner_rect={x+stripeOffset+animShift, y+1, PROGRESS_CHUNK_WIDTH, height-2};
+            switch(opts.stripedProgress)
+            {
+                default:
+                case STRIPE_PLAIN:
+                    if(horizPbar)
+                        for(stripeOffset=0; stripeOffset<(width+PROGRESS_CHUNK_WIDTH); stripeOffset+=(PROGRESS_CHUNK_WIDTH*2))
+                        {
+                            GdkRectangle inner_rect={x+stripeOffset+animShift, y+1, PROGRESS_CHUNK_WIDTH, height-2};
 
-                    constrainRect(&inner_rect, area);
-                    if(inner_rect.width>0 && inner_rect.height>0)
+                            constrainRect(&inner_rect, area);
+                            if(inner_rect.width>0 && inner_rect.height>0)
+                            {
+                                GdkRegion *inner_region=gdk_region_rectangle(&inner_rect);
+
+                                gdk_region_xor(region, inner_region);
+                                gdk_region_destroy(inner_region);
+                            }
+                        }
+                    else
+                        for(stripeOffset=0; stripeOffset<(height+PROGRESS_CHUNK_WIDTH); stripeOffset+=(PROGRESS_CHUNK_WIDTH*2))
+                        {
+                            GdkRectangle inner_rect={x+1, y+stripeOffset+animShift, width-2, PROGRESS_CHUNK_WIDTH};
+
+                            /*constrainRect(&inner_rect, area);*/
+                            if(inner_rect.width>0 && inner_rect.height>0)
+                            {
+                                GdkRegion *inner_region=gdk_region_rectangle(&inner_rect);
+
+                                gdk_region_xor(region, inner_region);
+                                gdk_region_destroy(inner_region);
+                            }
+                        }
+                    break;
+                case STRIPE_DIAGONAL:
+                    if(horizPbar)
+                        for(stripeOffset=0; stripeOffset<(width+height+2); stripeOffset+=(PROGRESS_CHUNK_WIDTH*2))
+                        {
+                            GdkPoint  a[4]={ {x+stripeOffset+animShift,                               y},
+                                             {x+stripeOffset+animShift+PROGRESS_CHUNK_WIDTH,          y},
+                                             {(x+stripeOffset+animShift+PROGRESS_CHUNK_WIDTH)-height, y+height-1},
+                                             {(x+stripeOffset+animShift)-height,                      y+height-1}};
+                            GdkRegion *inner_region=gdk_region_polygon(a, 4, GDK_EVEN_ODD_RULE);
+
+                            gdk_region_xor(region, inner_region);
+                            gdk_region_destroy(inner_region);
+                        }
+                    else
+                        for(stripeOffset=0; stripeOffset<(height+width+2); stripeOffset+=(PROGRESS_CHUNK_WIDTH*2))
+                        {
+                            GdkPoint  a[4]={{x,         y+stripeOffset+animShift},
+                                            {x+width-1, (y+stripeOffset+animShift)-width},
+                                            {x+width-1, (y+stripeOffset+animShift+PROGRESS_CHUNK_WIDTH)-width},
+                                            {x,         y+stripeOffset+animShift+PROGRESS_CHUNK_WIDTH}};
+                            GdkRegion *inner_region=gdk_region_polygon(a, 4, GDK_EVEN_ODD_RULE);
+
+                            gdk_region_xor(region, inner_region);
+                            gdk_region_destroy(inner_region);
+                        }
+                    if(area)
                     {
-                        GdkRegion *inner_region=gdk_region_rectangle(&inner_rect);
+                        GdkRegion *outer_region=gdk_region_rectangle(area);
 
-                        gdk_region_xor(region, inner_region);
-                        gdk_region_destroy(inner_region);
+                        gdk_region_intersect(region, outer_region);
+                        gdk_region_destroy(outer_region);
                     }
-                }
-            else
-                for(stripeOffset=0; stripeOffset<(height+PROGRESS_CHUNK_WIDTH);
-                    stripeOffset+=(PROGRESS_CHUNK_WIDTH*2))
-                {
-                    GdkRectangle inner_rect={x+1, y+stripeOffset+animShift, width-2,
-                                            PROGRESS_CHUNK_WIDTH};
-
-                    /*constrainRect(&inner_rect, area);*/
-                    if(inner_rect.width>0 && inner_rect.height>0)
-                    {
-                        GdkRegion *inner_region=gdk_region_rectangle(&inner_rect);
-
-                        gdk_region_xor(region, inner_region);
-                        gdk_region_destroy(inner_region);
-                    }
-                }
+            }
         }
 
         {
@@ -4433,19 +4507,20 @@ static void fillTab(GtkStyle *style, GdkWindow *window, GdkRectangle *area, GtkS
     }
     else
     {
-        EAppearance app=GTK_STATE_NORMAL==state ? QTC_SEL_TAB_APP : QTC_NORM_TAB_APP;
+        gboolean    selected=GTK_STATE_NORMAL==state;
+        EAppearance app=selected ? QTC_SEL_TAB_APP : QTC_NORM_TAB_APP;
 
         if(grad && !IS_FLAT(app))
         {
-            double s1=increase
+            double s1=WIDGET_TAB_TOP==tab || (selected && opts.colorSelTab)
                           ? SHADE_TAB_SEL_LIGHT
                           : SHADE_BOTTOM_TAB_SEL_DARK,
-                   s2=increase
+                   s2=WIDGET_TAB_TOP==tab || (selected && opts.colorSelTab)
                           ? SHADE_TAB_SEL_DARK
                           : SHADE_BOTTOM_TAB_SEL_LIGHT;
 
             drawBevelGradient(style, window, area, NULL, x, y, width, height,
-                              col, s1, s2, horiz, increase, FALSE, app, tab);
+                              col, s1, s2, horiz, increase, GTK_STATE_NORMAL==state, app, tab);
         }
         else
         {
@@ -4630,7 +4705,7 @@ debugDisplayWidget(widget, 3);
                                         : lastTab
                                             ? ROUNDED_BOTTOMRIGHT
                                             : ROUNDED_NONE,
-                                active ? BORDER_RAISED : BORDER_FLAT, WIDGET_OTHER, DF_LARGE_ARC);
+                                active && !opts.colorSelTab ? BORDER_RAISED : BORDER_FLAT, WIDGET_OTHER, DF_LARGE_ARC);
 
                 if(notebook && opts.highlightTab && active)
                 {
@@ -4674,7 +4749,7 @@ debugDisplayWidget(widget, 3);
                                         : lastTab
                                             ? ROUNDED_TOPRIGHT
                                             : ROUNDED_NONE,
-                                active ? BORDER_RAISED : BORDER_FLAT, WIDGET_OTHER, DF_LARGE_ARC);
+                                active && !opts.colorSelTab ? BORDER_RAISED : BORDER_FLAT, WIDGET_OTHER, DF_LARGE_ARC);
 
                 if(notebook && opts.highlightTab && active)
                 {
@@ -4714,7 +4789,7 @@ debugDisplayWidget(widget, 3);
                                         : lastTab
                                             ? ROUNDED_BOTTOMRIGHT
                                             : ROUNDED_NONE,
-                                active ? BORDER_RAISED : BORDER_FLAT, WIDGET_OTHER, DF_LARGE_ARC);
+                                active && !opts.colorSelTab ? BORDER_RAISED : BORDER_FLAT, WIDGET_OTHER, DF_LARGE_ARC);
 
                 if(notebook && opts.highlightTab && active)
                 {
@@ -4759,7 +4834,7 @@ debugDisplayWidget(widget, 3);
                                         : lastTab
                                             ? ROUNDED_BOTTOMLEFT
                                             : ROUNDED_NONE,
-                                active ? BORDER_RAISED : BORDER_FLAT, WIDGET_OTHER, DF_LARGE_ARC);
+                                active && !opts.colorSelTab ? BORDER_RAISED : BORDER_FLAT, WIDGET_OTHER, DF_LARGE_ARC);
 
                 if(notebook && opts.highlightTab && active)
                 {
@@ -4811,8 +4886,7 @@ static void gtkDrawSlider(GtkStyle *style, GdkWindow *window, GtkStateType state
     QtCurveStyle *qtcurveStyle = (QtCurveStyle *)style;
     gboolean custom_c = FALSE,
              scrollbar=DETAIL("slider"),
-             hscale=DETAIL("hscale"),
-             vscale=DETAIL("vscale");
+             scale=DETAIL("hscale") || DETAIL("vscale");
     GdkColor new_colors[TOTAL_SHADES+1],
              *btn_colors;
     GdkGC    *new_gcs[TOTAL_SHADES+1],
@@ -4824,7 +4898,7 @@ static void gtkDrawSlider(GtkStyle *style, GdkWindow *window, GtkStateType state
 
     if(useButtonColor(detail))
     {
-        if(scrollbar|hscale|vscale && GTK_STATE_INSENSITIVE==state)
+        if(scrollbar|scale && GTK_STATE_INSENSITIVE==state)
         {
             btn_gcs=qtcurveStyle->background_gc;
             btn_colors=qtcurveStyle->background;
@@ -4838,56 +4912,103 @@ static void gtkDrawSlider(GtkStyle *style, GdkWindow *window, GtkStateType state
             btn_colors=new_colors;
         }
         else
-            QTC_SET_BTN_COL_AND_GCS(scrollbar, hscale||vscale, FALSE)
+            QTC_SET_BTN_COL_AND_GCS(scrollbar, scale, FALSE)
     }
 
     FN_CHECK
     sanitizeSize(window, &width, &height);
 
-    if(scrollbar || ROUND_FULL!=opts.round)
+    if(scrollbar || ROUND_FULL!=opts.round || SLIDER_PLAIN==opts.sliderStyle)
     {
-        gtk_paint_box(style, window, state, shadow_type, area, widget, "slider", x, y, width, height);
+        gtk_paint_box(style, window, state, shadow_type, area, widget,
+                      !scrollbar && SLIDER_PLAIN==opts.sliderStyle ? "qtc-slider" : "slider", x, y, width, height);
 
        /* Orientation is always vertical with Mozilla, why? Anyway this hack should be OK - as we only draw
           dashes when slider is larger than 'min' pixels... */
         orientation=width<height ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL;
         if(LINE_NONE!=opts.sliderThumbs &&
-           ((GTK_ORIENTATION_HORIZONTAL==orientation && width>=min) || height>=min))
+           (scale || ((GTK_ORIENTATION_HORIZONTAL==orientation && width>=min) || height>=min)))
         {
             GdkGC  **gcs=/*opts.coloredMouseOver && GTK_STATE_PRELIGHT==state
                             ? SHADE_NONE==opts.shadeSliders && !custom_c
                                   ? qtcurveStyle->mouseover_gc : qtcurveStyle->background_gc
                             : */ btn_gcs;
 
+            if(LINE_SUNKEN!=opts.sliderThumbs)
+                if(GTK_ORIENTATION_HORIZONTAL==orientation)
+                    x++;
+                else
+                    y++;
+
             switch(opts.sliderThumbs)
             {
+                case LINE_FLAT:
+                    drawLines(window, x, y, width, height,
+                              GTK_ORIENTATION_HORIZONTAL!=orientation, 3, 5, gcs, area, 5, 0, FALSE);
+                    break;
                 case LINE_SUNKEN:
                     drawLines(window, x, y, width, height,
-                              GTK_ORIENTATION_HORIZONTAL!=orientation,4, 3, gcs, area, 3, 1);
+                              GTK_ORIENTATION_HORIZONTAL!=orientation, 4, 3, gcs, area, 3, 1, TRUE);
                     break;
                 default:
                 case LINE_DOTS:
                     drawDots(window, x, y, width, height,
-                             GTK_ORIENTATION_HORIZONTAL!=orientation, 5, 2, gcs, area, 0, 5);
+                             GTK_ORIENTATION_HORIZONTAL!=orientation, scale ? 3 : 5, scale ? 4 : 2, gcs, area, 0, 5);
             }
         }
     }
     else
     {
-        gboolean coloredMouseOver=GTK_STATE_PRELIGHT==state && opts.coloredMouseOver,
-                 horiz=width>height;
-        int      bgnd=getFill(state, FALSE),
-                      xo=horiz ? 8 : 0,
-                      yo=horiz ? 0 : 8;
-        GdkGC    **gcs=coloredMouseOver
-                    ? qtcurveStyle->mouseover_gc
-                    : btn_gcs;
-        GdkColor *colors=coloredMouseOver
-                    ? qtcurveStyle->mouseover
-                    : btn_colors;
-        GdkPoint  clip[8]= {{x,       y+8+yo},  {x,       y+4},     {x+4,    y},        {x+8+xo, y},
-                           { x+12+xo, y+4},     {x+12+xo, y+8+yo},  {x+8+xo, y+12+yo},  {x+4, y+12+yo} };
-        GdkRegion *region=gdk_region_polygon(clip, 8, GDK_EVEN_ODD_RULE);
+        gboolean    coloredMouseOver=GTK_STATE_PRELIGHT==state && opts.coloredMouseOver,
+                    horiz=SLIDER_TRIANGULAR==opts.sliderStyle ? height>width : width>height;
+        int         bgnd=getFill(state, FALSE),
+                    xo=horiz ? 8 : 0,
+                    yo=horiz ? 0 : 8,
+                    size=SLIDER_TRIANGULAR==opts.sliderStyle ? 15 : 13,
+                    light=APPEARANCE_DULL_GLASS==opts.sliderAppearance ? 1 : 0;
+        GdkGC       **gcs=coloredMouseOver
+                       ? qtcurveStyle->mouseover_gc
+                       : btn_gcs;
+        GdkColor    *colors=coloredMouseOver
+                       ? qtcurveStyle->mouseover
+                       : btn_colors;
+        GdkRegion    *region=NULL;
+        GdkPoint     clip[8];
+        GtkArrowType direction=horiz ? GTK_ARROW_DOWN : GTK_ARROW_RIGHT;
+        gboolean     drawLight=MO_PLASTIK!=opts.coloredMouseOver || !coloredMouseOver ||
+                                       (SLIDER_ROUND==opts.sliderStyle &&
+                                       (SHADE_BLEND_SELECTED==opts.shadeSliders || SHADE_SELECTED==opts.shadeSliders));
+
+        if(SLIDER_TRIANGULAR==opts.sliderStyle)
+        {
+            switch(direction)
+            {
+                case GTK_ARROW_UP:
+                default:
+                case GTK_ARROW_DOWN:
+                    y+=2;
+                    {
+                        GdkPoint pts[]={{x, y+2}, {x+2, y}, {x+8, y}, {x+10, y+2}, {x+10, y+9}, {x+5, y+14}, {x, y+9}};
+                        memcpy(&clip, &pts, sizeof(GdkPoint)*7);
+                    }
+                    break;
+                case GTK_ARROW_RIGHT:
+                case GTK_ARROW_LEFT:
+                    x+=2;
+                    {
+                        GdkPoint pts[]={{x+2, y}, {x, y+2}, {x, y+8}, {x+2, y+10}, {x+9, y+10}, {x+14, y+5}, {x+9, y}};
+                        memcpy(&clip, &pts, sizeof(GdkPoint)*7);
+                    }
+            }
+            region=gdk_region_polygon(clip, 7, GDK_EVEN_ODD_RULE);
+        }
+        else
+        {
+            GdkPoint  clip[8]= {{x,       y+8+yo},  {x,       y+4},     {x+4,    y},        {x+8+xo, y},
+                               { x+12+xo, y+4},     {x+12+xo, y+8+yo},  {x+8+xo, y+12+yo},  {x+4, y+12+yo} };
+
+            region=gdk_region_polygon(clip, 8, GDK_EVEN_ODD_RULE);
+        }
 
         if(APPEARANCE_FLAT==opts.appearance || APPEARANCE_RAISED==opts.appearance)
         {
@@ -4903,20 +5024,20 @@ static void gtkDrawSlider(GtkStyle *style, GdkWindow *window, GtkStateType state
                 gdk_gc_set_clip_region(qtcurveStyle->mouseover_gc[col], region);
                 if(horiz)
                 {
-                    gdk_draw_rectangle(window, qtcurveStyle->mouseover_gc[col], TRUE, x+1, y+1, len, height-2);
-                    gdk_draw_rectangle(window, qtcurveStyle->mouseover_gc[col], TRUE, x+width-(1+len), y+1, len, height-2);
+                    gdk_draw_rectangle(window, qtcurveStyle->mouseover_gc[col], TRUE, x+1, y+1, len, size-2);
+                    gdk_draw_rectangle(window, qtcurveStyle->mouseover_gc[col], TRUE, x+width-(1+len), y+1, len, size-2);
                 }
                 else
                 {
-                    gdk_draw_rectangle(window, qtcurveStyle->mouseover_gc[col], TRUE, x+1, y+1, width-2, len);
-                    gdk_draw_rectangle(window, qtcurveStyle->mouseover_gc[col], TRUE, x+1, y+height-(1+len), width-2, len);
+                    gdk_draw_rectangle(window, qtcurveStyle->mouseover_gc[col], TRUE, x+1, y+1, size-2, len);
+                    gdk_draw_rectangle(window, qtcurveStyle->mouseover_gc[col], TRUE, x+1, y+height-(1+len), size-2, len);
                 }
                 gdk_gc_set_clip_region(qtcurveStyle->mouseover_gc[col], NULL);
             }
         }
         else
         {
-            drawBevelGradient(style, window, NULL, region, x+1, y+1, width-2, height-2, &colors[bgnd],
+            drawBevelGradient(style, window, NULL, region, x, y, horiz ? width-1 : size, horiz ? size : height-1, &colors[bgnd],
                               SHADE_BEVEL_GRAD_LIGHT, SHADE_BEVEL_GRAD_DARK,
                               horiz, TRUE, FALSE, opts.sliderAppearance, WIDGET_OTHER);
 
@@ -4927,19 +5048,19 @@ static void gtkDrawSlider(GtkStyle *style, GdkWindow *window, GtkStateType state
 
                 if(horiz)
                 {
-                    drawBevelGradient(style, window, NULL, region, x+1, y+1, len, height-2, &qtcurveStyle->mouseover[col],
+                    drawBevelGradient(style, window, NULL, region, x+1, y+1, len, size-2, &qtcurveStyle->mouseover[col],
                                       SHADE_BEVEL_GRAD_LIGHT, SHADE_BEVEL_GRAD_DARK,
                                       horiz, TRUE, FALSE, opts.sliderAppearance, WIDGET_OTHER);
-                    drawBevelGradient(style, window, NULL, region, x+width-(1+len), y+1, len, height-2, &qtcurveStyle->mouseover[col],
+                    drawBevelGradient(style, window, NULL, region, x+width-(1+len), y+1, len, size-2, &qtcurveStyle->mouseover[col],
                                       SHADE_BEVEL_GRAD_LIGHT, SHADE_BEVEL_GRAD_DARK,
                                       horiz, TRUE, FALSE, opts.sliderAppearance, WIDGET_OTHER);
                 }
                 else
                 {
-                    drawBevelGradient(style, window, NULL, region, x+1, y+1, width-2, len, &qtcurveStyle->mouseover[col],
+                    drawBevelGradient(style, window, NULL, region, x+1, y+1, size-2, len, &qtcurveStyle->mouseover[col],
                                       SHADE_BEVEL_GRAD_LIGHT, SHADE_BEVEL_GRAD_DARK,
                                       horiz, TRUE, FALSE, opts.sliderAppearance, WIDGET_OTHER);
-                    drawBevelGradient(style, window, NULL, region, x+1, y+height-(1+len), width-2, len, &qtcurveStyle->mouseover[col],
+                    drawBevelGradient(style, window, NULL, region, x+1, y+height-(1+len), size-2, len, &qtcurveStyle->mouseover[col],
                                       SHADE_BEVEL_GRAD_LIGHT, SHADE_BEVEL_GRAD_DARK,
                                       horiz, TRUE, FALSE, opts.sliderAppearance, WIDGET_OTHER);
                 }
@@ -4948,6 +5069,53 @@ static void gtkDrawSlider(GtkStyle *style, GdkWindow *window, GtkStateType state
 
         gdk_region_destroy(region);
 
+        if(SLIDER_TRIANGULAR==opts.sliderStyle)
+        {
+            GdkGC *aaGc=QTC_SET_MID_COLOR(&colors[QT_STD_BORDER], &style->bg[GTK_STATE_NORMAL])
+
+            if(area)
+            {
+                gdk_gc_set_clip_rectangle(gcs[QT_STD_BORDER], area);
+                gdk_gc_set_clip_rectangle(gcs[light], area);
+            }
+
+            switch(direction)
+            {
+                case GTK_ARROW_UP:
+                default:
+                case GTK_ARROW_DOWN:
+                {
+                    GdkPoint aa[]={{x, y+1},  {x+1, y}, {x+9, y}, {x+10, y+1}, {x+10, y+10}, {x+6, y+14}, {x+4, y+14}, {x, y+10}};
+                    gdk_draw_polygon(window, aaGc, FALSE, aa, 8);
+                    if(drawLight)
+                    {
+                        gdk_draw_line(window, gcs[light], x+1, y+9,  x+1, y+1);
+                        gdk_draw_line(window, gcs[light], x+1, y+1, x+8, y+1);
+                    }
+                    break;
+                }
+                case GTK_ARROW_RIGHT:
+                case GTK_ARROW_LEFT:
+                {
+                    GdkPoint aa[]={{x+1, y}, {x, y+1}, {x, y+9}, {x+1, y+10}, {x+10, y+10}, {x+14, y+6}, {x+14, y+4}, {x+10, y}};
+                    gdk_draw_polygon(window, aaGc, FALSE, aa, 8);
+                    if(drawLight)
+                    {
+                        gdk_draw_line(window, gcs[light], x+1, y+8, x+1, y+1);
+                        gdk_draw_line(window, gcs[light], x+1, y+1, x+9, y+1);
+                    }
+                    break;
+                }
+            }
+
+            gdk_draw_polygon(window, gcs[QT_STD_BORDER], FALSE, clip, 7);
+            if(area)
+            {
+                gdk_gc_set_clip_rectangle(gcs[QT_STD_BORDER], NULL);
+                gdk_gc_set_clip_rectangle(gcs[light], NULL);
+            }
+        }
+        else
         {
             GdkPixbuf *border=getPixbuf(&colors[coloredMouseOver ? 4 : QT_BORDER(GTK_STATE_INSENSITIVE!=state)],
                                         horiz ? PIX_SLIDER : PIX_SLIDER_V, 0.8);
@@ -4955,7 +5123,7 @@ static void gtkDrawSlider(GtkStyle *style, GdkWindow *window, GtkStateType state
             gdk_draw_pixbuf(window, btn_gcs[bgnd], border, 0, 0, x, y, gdk_pixbuf_get_width(border),
                             gdk_pixbuf_get_height(border), GDK_RGB_DITHER_MAX, 0, 0);
 
-            if(MO_PLASTIK!=opts.coloredMouseOver || !coloredMouseOver)
+            if(drawLight)
             {
                 GdkPixbuf *light=getPixbuf(&colors[0], horiz ? PIX_SLIDER_LIGHT : PIX_SLIDER_LIGHT_V, 1.0);
 
@@ -4993,7 +5161,7 @@ static void gtkDrawHLine(GtkStyle *style, GdkWindow *window, GtkStateType state,
     QtCurveStyle *qtcurveStyle = (QtCurveStyle *)style;
     gboolean tbar=DETAIL("toolbar");
     int      light=0,
-             dark=5;
+             dark=tbar ? (LINE_FLAT==opts.toolbarSeparators ? 4 : 3) : 5;
     FN_CHECK
 
 #ifdef QTC_DEBUG
@@ -5001,39 +5169,40 @@ printf("Draw hline %d %d %d %d %s  ", state, x1, x2, y, detail ? detail : "NULL"
 debugDisplayWidget(widget, 3);
 #endif
 
-    if(tbar)
-    {
-        dark=3;
-
-        switch(opts.toolbarSeparators)
-        {
-            case LINE_DOTS:
-                drawDots(window, x1, y, x2-x1, 2, FALSE, (((x2-x1)/3.0)+0.5), 0,
-                         qtcurveStyle->background_gc, area, 0, 5);
-                return;
-            case LINE_NONE:
-                return;
-        }
-    }
-
     if(area)
     {
         gdk_gc_set_clip_rectangle(qtcurveStyle->background_gc[light], area);
         gdk_gc_set_clip_rectangle(qtcurveStyle->background_gc[dark], area);
     }
 
-    if(DETAIL("label"))
+    if(tbar)
+    {
+        switch(opts.toolbarSeparators)
+        {
+            default:
+            case LINE_DOTS:
+                drawDots(window, x1, y, x2-x1, 2, FALSE, (((x2-x1)/3.0)+0.5), 0,
+                         qtcurveStyle->background_gc, area, 0, 5);
+                break;
+            case LINE_NONE:
+                break;
+            case LINE_FLAT:
+            case LINE_SUNKEN:
+            {
+                gdk_draw_line(window, qtcurveStyle->background_gc[dark], x1, y, x2, y);
+                if(LINE_SUNKEN==opts.toolbarSeparators)
+                    gdk_draw_line(window, qtcurveStyle->background_gc[light], x1 + 1, y + 1, x2 + 1, y + 1);
+            }
+        }
+    }
+    else if(DETAIL("label"))
     {
         if(state == GTK_STATE_INSENSITIVE)
             gdk_draw_line(window, qtcurveStyle->background_gc[light], x1 + 1, y + 1, x2 + 1, y + 1);
-        gdk_draw_line(window, style->text_gc[state], x1, y, x2, y);     
+        gdk_draw_line(window, style->text_gc[state], x1, y, x2, y); 
     }
     else
-    {
         gdk_draw_line(window, qtcurveStyle->background_gc[dark], x1, y, x2, y);
-        if(tbar)/* || DETAIL("menuitem")) */
-            gdk_draw_line(window, qtcurveStyle->background_gc[light], x1, y+1, x2, y+1);
-    }
 
     if(area)
     {
@@ -5056,24 +5225,9 @@ debugDisplayWidget(widget, 3);
 
     if(!(DETAIL("vseparator") && isOnCombo(widget, 0))) /* CPD: Combo handled in drawBox */
     {
-        int      dark=5,
-                 light=0;
         gboolean tbar=DETAIL("toolbar");
-
-        if(tbar)
-        {
-            dark=3;
-
-            switch(opts.toolbarSeparators)
-            {
-                case LINE_DOTS:
-                    drawDots(window, x, y1, 2, y2-y1, TRUE, (((y2-y1)/3.0)+0.5), 0,
-                             qtcurveStyle->background_gc, area, 0, 5);
-                    return;
-                case LINE_NONE:
-                    return;
-            }
-        }
+        int      dark=tbar ? 3 : 5,
+                 light=0;
 
         if(area)
         {
@@ -5081,10 +5235,28 @@ debugDisplayWidget(widget, 3);
             gdk_gc_set_clip_rectangle(qtcurveStyle->background_gc[light], area);
         }
 
-        gdk_draw_line(window, qtcurveStyle->background_gc[dark], x, y1, x, y2 - 1);
-
         if(tbar)
-            gdk_draw_line(window, qtcurveStyle->background_gc[light], x+1, y1, x+1, y2 - 1);
+        {
+            switch(opts.toolbarSeparators)
+            {
+                default:
+                case LINE_DOTS:
+                    drawDots(window, x, y1, 2, y2-y1, TRUE, (((y2-y1)/3.0)+0.5), 0,
+                             qtcurveStyle->background_gc, area, 0, 5);
+                    break;
+                case LINE_NONE:
+                    break;
+                case LINE_FLAT:
+                case LINE_SUNKEN:
+                {
+                    gdk_draw_line(window, qtcurveStyle->background_gc[dark], x, y1, x, y2 - 1);
+                    if(LINE_SUNKEN==opts.toolbarSeparators)
+                        gdk_draw_line(window, qtcurveStyle->background_gc[light], x+1, y1, x+1, y2 - 1);
+                }
+            }
+        }
+        else
+            gdk_draw_line(window, qtcurveStyle->background_gc[dark], x, y1, x, y2 - 1);
 
         if(area)
         {
