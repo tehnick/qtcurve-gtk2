@@ -564,13 +564,17 @@ static EStepper getStepper(GtkWidget *widget, int x, int y)
     if(GTK_IS_RANGE(widget))
     {
         if(isStepperA(widget, x, y))
-            return QTC_STEPPER_A;
+            return GTK_APP_NEW_MOZILLA==qtSettings.app && (x>10 || y>10)
+                ? QTC_STEPPER_C
+                : QTC_STEPPER_A;
         else if(isStepperB(widget, x, y))
             return QTC_STEPPER_B;
         else if(isStepperC(widget, x, y))
             return QTC_STEPPER_C;
         else if(isStepperD(widget, x, y))
-            return QTC_STEPPER_D;
+            return GTK_APP_NEW_MOZILLA==qtSettings.app && (x<18 && y<18)
+                ? QTC_STEPPER_B
+                : QTC_STEPPER_D;
     }
     return QTC_STEPPER_NONE;
 }
@@ -638,7 +642,7 @@ static int getRound(const char *detail, GtkWidget *widget, int x, int y, gboolea
 
 static gboolean isHorizontalProgressbar(GtkWidget *widget)
 {
-    if(!widget || GTK_APP_MOZILLA==qtSettings.app ||!GTK_IS_PROGRESS_BAR(widget))
+    if(!widget || isMozilla() ||!GTK_IS_PROGRESS_BAR(widget))
         return TRUE;
 
     switch(GTK_PROGRESS_BAR(widget)->orientation)
@@ -655,7 +659,7 @@ static gboolean isHorizontalProgressbar(GtkWidget *widget)
 
 static int progressbarRound(GtkWidget *widget, gboolean rev)
 {
-    if(!widget || !GTK_IS_PROGRESS_BAR(widget) || GTK_APP_MOZILLA==qtSettings.app ||
+    if(!widget || !GTK_IS_PROGRESS_BAR(widget) || isMozilla() ||
        equal(gtk_progress_bar_get_fraction(GTK_PROGRESS_BAR(widget)), 100.0))
         return ROUNDED_NONE;
 
@@ -685,7 +689,7 @@ static GdkGC * parentBgGc(GtkWidget *widget)
 
 static void setState(GtkWidget *widget, GtkStateType *state, gboolean *btn_down, int x, int y)
 {
-    if(GTK_APP_MOZILLA!=qtSettings.app) /* && GTK_STATE_INSENSITIVE!=*state)*/
+    if(!isMozilla()) /* && GTK_STATE_INSENSITIVE!=*state)*/
     {
         GtkRange *range=GTK_RANGE(widget);
 
@@ -2020,7 +2024,8 @@ static void drawEntryField(GtkStyle *style, GdkWindow *window, GtkStateType stat
                            gint height, int round, gboolean isCombo)
 {
     QtCurveStyle *qtcurveStyle = (QtCurveStyle *)style;
-    gboolean highlight=widget && GTK_WIDGET_HAS_FOCUS(widget) && GTK_APP_JAVA!=qtSettings.app,
+    gboolean enabled=!(GTK_STATE_INSENSITIVE==state || (widget && !GTK_WIDGET_IS_SENSITIVE(widget))),
+             highlight=enabled && widget && GTK_WIDGET_HAS_FOCUS(widget) && GTK_APP_JAVA!=qtSettings.app,
              doEtch=QTC_DO_EFFECT;
     GdkGC    **gcs=highlight ? qtcurveStyle->menuitem_gc : qtcurveStyle->button_gc,
              *bgnd_gc=style->bg_gc[state],
@@ -2051,24 +2056,26 @@ debugDisplayWidget(widget, 3);
     else
         midgc=style->base_gc[state];
 
+    gdk_draw_rectangle(window, enabled ? style->base_gc[state] : style->bg_gc[GTK_STATE_INSENSITIVE],
+                       TRUE, x, y, width, height);
     gdk_draw_line(window, midgc, x+1, y+1, x+1, y+height-2);
     gdk_draw_line(window, midgc, x+1, y+1, x+width-1, y+1);
 
-    if(GTK_STATE_INSENSITIVE==state || (widget && !GTK_WIDGET_IS_SENSITIVE(widget)))
-        gc=style->bg_gc[state];
-    else
+    if(enabled)
     {
         midgc=QTC_SET_MID_COLOR(&style->base[state], &colors[0])
         gc=midgc;
     }
+    else
+        gc=style->bg_gc[state];
 
     gdk_draw_line(window, gc, x+width-2, y+1, x+width-2, y+height-2);
     gdk_draw_line(window, gc, x+1, y+height-2, x+width-2, y+height-2);
-
     gdk_draw_point(window, bgnd_gc, x, y);
     gdk_draw_point(window, bgnd_gc, x+width-1, y);
     gdk_draw_point(window, bgnd_gc, x, y+height-1);
     gdk_draw_point(window, bgnd_gc, x+width-1, y+height-1);
+
     drawBorder(style, window, state, area, NULL, x, y, width, height, NULL,
                gcs, colors, round, BORDER_FLAT, WIDGET_OTHER, DF_LARGE_ARC|DF_DO_CORNERS);
 
@@ -2165,24 +2172,24 @@ debugDisplayWidget(widget, 3);
 
 #define QTC_MODAL_HACK_NAME  "--kgtk-modal-dialog-hack--"
 #define QTC_MENU_HACK_NAME   "--kgtk-menu-hack--"
-#if 0
+#ifdef QTC_REORDER_GTK_DIALOG_BUTTONS
 #define QTC_BUTTON_HACK_NAME "--kgtk-button-hack--"
 
 #if GTK_CHECK_VERSION(2, 6, 0)
-    if(opts.setDialogButtonOrder && GTK_IS_WINDOW(widget) && detail && 0==strcmp(detail, "base"))
+    if(!opts.gtkButtonOrder && GTK_IS_WINDOW(widget) && detail && 0==strcmp(detail, "base"))
     {
         GtkWidget *topLevel=gtk_widget_get_toplevel(widget);
 
         if(topLevel && GTK_IS_DIALOG(topLevel) && (!topLevel->name || 0==strcmp(topLevel->name, QTC_MODAL_HACK_NAME)))
-        {
-            gtk_dialog_set_alternative_button_order(GTK_DIALOG(topLevel), GTK_RESPONSE_HELP,
-                                                    GTK_RESPONSE_OK, GTK_RESPONSE_YES, GTK_RESPONSE_ACCEPT, GTK_RESPONSE_APPLY,
-                                                    GTK_RESPONSE_REJECT, GTK_RESPONSE_CLOSE, GTK_RESPONSE_NO, GTK_RESPONSE_CANCEL, -1);
+            {
+                gtk_dialog_set_alternative_button_order(GTK_DIALOG(topLevel), GTK_RESPONSE_HELP,
+                                                        GTK_RESPONSE_OK, GTK_RESPONSE_YES, GTK_RESPONSE_ACCEPT, GTK_RESPONSE_APPLY,
+                                                        GTK_RESPONSE_REJECT, GTK_RESPONSE_CLOSE, GTK_RESPONSE_NO, GTK_RESPONSE_CANCEL, -1);
 
-            if(!topLevel->name)
-                gtk_widget_set_name(topLevel, QTC_BUTTON_HACK_NAME);
-            else
-                gtk_widget_set_name(topLevel, QTC_BUTTON_HACK_NAME QTC_MODAL_HACK_NAME);
+                if(!topLevel->name)
+                    gtk_widget_set_name(topLevel, QTC_BUTTON_HACK_NAME);
+                else
+                    gtk_widget_set_name(topLevel, QTC_BUTTON_HACK_NAME QTC_MODAL_HACK_NAME);
         }
     }
 #endif
@@ -2324,7 +2331,7 @@ debugDisplayWidget(widget, 3);
 #ifdef QTC_MOUSEOVER_HANDLES
         int *handleHash=NULL;
 
-        if(opts.coloredMouseOver && GTK_APP_MOZILLA!=qtSettings.app)
+        if(opts.coloredMouseOver && !isMozilla())
         {
             handleHash=lookupToolbarHandleHash(widget, FALSE);
 
@@ -2642,7 +2649,7 @@ debugDisplayWidget(widget, 3);
     else if(-1==height)
         gdk_window_get_size(window, NULL, &height);
 
-    if(menubar && GTK_APP_MOZILLA!=qtSettings.app && GTK_APP_JAVA!=qtSettings.app &&
+    if(menubar && !isMozilla() && GTK_APP_JAVA!=qtSettings.app &&
        (opts.menubarMouseOver || opts.shadeMenubarOnlyWhenActive))
     {
         GtkWidget **mbHash=lookupMenubarHash(widget, FALSE);
@@ -2921,6 +2928,10 @@ debugDisplayWidget(widget, 3);
                 }
                 else if(IND_COLORED==opts.defBtnIndicator && (COLORED_BORDER_SIZE>2))
                 {
+                    GdkGC     **gcs=qtcurveStyle->mouseover_gc[0] && GTK_STATE_PRELIGHT==state
+                                        ? qtcurveStyle->mouseover_gc : qtcurveStyle->defbtn_gc;
+                    GdkColor  *cols=qtcurveStyle->mouseover_gc[0] && GTK_STATE_PRELIGHT==state
+                                        ? qtcurveStyle->mouseover : qtcurveStyle->defbtn;
                     int       o=QTC_DO_EFFECT ? 1 : 0; // offset needed because of etch
                     GdkPoint  outer[4]={ {x, y}, {x+width, y}, {x+width, y+height},
                                          {x, y+height} },
@@ -2934,8 +2945,7 @@ debugDisplayWidget(widget, 3);
                     gdk_region_xor(inner_region, outer_region);
 
                     drawLightBevel(style, window, state, NULL, inner_region, x, y, width, height,
-                                   &qtcurveStyle->defbtn[QTC_MO_DEF_BTN], NULL, qtcurveStyle->defbtn_gc,
-                                   qtcurveStyle->defbtn, NULL, round, WIDGET_DEF_BUTTON,
+                                   &cols[QTC_MO_DEF_BTN], NULL, gcs, cols, NULL, round, WIDGET_DEF_BUTTON,
                                    BORDER_FLAT, DF_LARGE_ARC|
                                    /*(draw_inside ? DF_DRAW_INSIDE : 0) |*/
                                    DF_DO_CORNERS|(sunken ? DF_SUNKEN : 0)|
@@ -3381,7 +3391,7 @@ debugDisplayWidget(widget, 3);
     {
         GdkRegion  *region=NULL;
         GtkMenuBar *mb=menuitem ? isMenubar(widget, 0) : NULL;
-        gboolean   active_mb=mb ? GTK_MENU_SHELL(mb)->active : FALSE,
+        gboolean   active_mb=isMozilla() || (mb ? GTK_MENU_SHELL(mb)->active : FALSE),
                    horizPbar=isHorizontalProgressbar(widget);
         int        animShift=-PROGRESS_CHUNK_WIDTH;
 
@@ -3472,7 +3482,7 @@ debugDisplayWidget(widget, 3);
         {
             GdkColor *itemCols=!opts.colorMenubarMouseOver && mb && !active_mb ? qtcurveStyle->background : qtcurveStyle->menuitem;
             GdkGC    **itemGcs=!opts.colorMenubarMouseOver && mb && !active_mb ? qtcurveStyle->background_gc : qtcurveStyle->menuitem_gc;
-            GdkColor *bgnd=qtcurveStyle->menubar_gc[0] && mb && GTK_APP_MOZILLA!=qtSettings.app && GTK_APP_JAVA!=qtSettings.app
+            GdkColor *bgnd=qtcurveStyle->menubar_gc[0] && mb && !isMozilla() && GTK_APP_JAVA!=qtSettings.app
                             ? &qtcurveStyle->menubar[ORIGINAL_SHADE] : NULL;
             int      round=pbar ? progressbarRound(widget, rev)
                                 : mb
@@ -3548,7 +3558,7 @@ debugDisplayWidget(widget, 3);
                 midgc=QTC_SET_MID_COLOR(&qtcurveStyle->menuitem[2],
                                         &qtcurveStyle->background[ORIGINAL_SHADE])
 
-                /*if(GTK_APP_MOZILLA!=qt_settings.app)
+                /*if(!isMozilla())
                 {
                     x--; y--; width+=2; height+=2;
                 }*/
@@ -3698,7 +3708,7 @@ static void gtkDrawShadow(GtkStyle *style, GdkWindow *window, GtkStateType state
     {
         gboolean frame=!detail || 0==strcmp(detail, "frame"),
                  profiledFrame=DETAIL("scrolled_window"),
-                 statusBar=GTK_APP_MOZILLA==qtSettings.app || GTK_APP_JAVA==qtSettings.app
+                 statusBar=isMozilla() || GTK_APP_JAVA==qtSettings.app
                             ? frame : isStatusBarFrame(widget);
 
     #ifdef QTC_DEBUG
@@ -3712,7 +3722,7 @@ static void gtkDrawShadow(GtkStyle *style, GdkWindow *window, GtkStateType state
         if(!statusBar && (frame || profiledFrame) && QTC_ROUNDED)
         {
             if(GTK_SHADOW_NONE!=shadow_type &&
-               (!frame || opts.drawStatusBarFrames || (GTK_APP_MOZILLA!=qtSettings.app && GTK_APP_JAVA!=qtSettings.app)))
+               (!frame || opts.drawStatusBarFrames || (!isMozilla() && GTK_APP_JAVA!=qtSettings.app)))
               drawBorder(style, window, state, area, NULL, x, y, width, height, NULL,
                          NULL, NULL, ROUNDED_ALL, profiledFrame ? BORDER_SUNKEN : BORDER_FLAT,
                          WIDGET_OTHER, DF_LARGE_ARC|DF_BLEND|DF_DO_CORNERS);
@@ -3828,7 +3838,7 @@ static void gtkDrawCheck(GtkStyle *style, GdkWindow *window, GtkStateType state,
                          GtkShadowType shadow_type, GdkRectangle *area, GtkWidget *widget,
                          const gchar *detail, gint x, gint y, gint width, gint height)
 {
-    if(GTK_STATE_PRELIGHT==state && (GTK_APP_MOZILLA==qtSettings.app || GTK_APP_JAVA==qtSettings.app))
+    if(GTK_STATE_PRELIGHT==state && (isMozilla() || GTK_APP_JAVA==qtSettings.app))
         state=GTK_STATE_NORMAL;
     {
 
@@ -3864,7 +3874,7 @@ static void gtkDrawCheck(GtkStyle *style, GdkWindow *window, GtkStateType state,
     if(mnu)
     {
         y+=2;
-        if(GTK_APP_MOZILLA==qtSettings.app || GTK_APP_JAVA==qtSettings.app)
+        if(isMozilla() || GTK_APP_JAVA==qtSettings.app)
             x+=2;
         else
             x-=2;
@@ -4023,7 +4033,7 @@ static void gtkDrawOption(GtkStyle *style, GdkWindow *window, GtkStateType state
                           GtkShadowType shadow_type, GdkRectangle *area, GtkWidget *widget,
                           const gchar *detail, gint x, gint y, gint width, gint height)
 {
-    if(GTK_STATE_PRELIGHT==state && (GTK_APP_MOZILLA==qtSettings.app || GTK_APP_JAVA==qtSettings.app))
+    if(GTK_STATE_PRELIGHT==state && (isMozilla() || GTK_APP_JAVA==qtSettings.app))
         state=GTK_STATE_NORMAL;
     {
 
@@ -4571,12 +4581,12 @@ debugDisplayWidget(widget, 3);
         FN_CHECK
 
         /* Hacky fix for tabs in Thunderbird */
-        if(GTK_APP_MOZILLA==qtSettings.app && area && area->x<(x-10))
+        if(isMozilla() && area && area->x<(x-10))
             return;
 
         /* f'in mozilla apps dont really use Gtk widgets - they just paint to a pixmap. So, no way of knowing
         the position of a tab! The 'best' look seems to be to round both corners. Not nice, but... */
-        if(GTK_APP_MOZILLA==qtSettings.app || GTK_APP_JAVA==qtSettings.app)
+        if(isMozilla() || GTK_APP_JAVA==qtSettings.app)
             firstTab=lastTab=TRUE;
         else if(notebook)
         {
@@ -4632,7 +4642,7 @@ debugDisplayWidget(widget, 3);
             firstTab=oldLast;
         }
 
-        if(GTK_APP_MOZILLA!=qtSettings.app && GTK_APP_JAVA!=qtSettings.app && !highlightTab && highlightingEnabled)
+        if(!isMozilla() && GTK_APP_JAVA!=qtSettings.app && !highlightTab && highlightingEnabled)
         {
             lookupTabHash(widget, TRUE); /* Create hash entry... */
             gtk_widget_add_events(widget, GDK_LEAVE_NOTIFY_MASK|GDK_POINTER_MOTION_MASK);
@@ -4666,11 +4676,17 @@ debugDisplayWidget(widget, 3);
         TODO: This is not good, should respect 'area' as passed in. However, it works for the moment - if the thunderbird hack
               above is used. Needs to be fixed tho.
         */
-        clipArea.x=x;
-        clipArea.y=y;
-        clipArea.width=width;
-        clipArea.height=height;
-        area=&clipArea;
+
+        /* In addition to the above, doing this section only for the active mozilla tab seems to fix some drawing errors
+           with firefox3...*/
+        if(!isMozilla() || active)
+        {
+            clipArea.x=x;
+            clipArea.y=y;
+            clipArea.width=width;
+            clipArea.height=height;
+            area=&clipArea;
+        }
 
         if(area)
         {
