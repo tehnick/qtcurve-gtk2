@@ -3479,6 +3479,9 @@ debugDisplayWidget(widget, 3);
             }
         }
 
+        /* The following 'if' is just a hack for a menubar item problem with pidgin. Sometime, a 12pix width
+           empty menubar item is drawn on the right - and doesnt disappear! */
+        if(!mb || width>12)
         {
             GdkColor *itemCols=!opts.colorMenubarMouseOver && mb && !active_mb ? qtcurveStyle->background : qtcurveStyle->menuitem;
             GdkGC    **itemGcs=!opts.colorMenubarMouseOver && mb && !active_mb ? qtcurveStyle->background_gc : qtcurveStyle->menuitem_gc;
@@ -3486,10 +3489,10 @@ debugDisplayWidget(widget, 3);
                             ? &qtcurveStyle->menubar[ORIGINAL_SHADE] : NULL;
             int      round=pbar ? progressbarRound(widget, rev)
                                 : mb
-                                ? active_mb && opts.roundMbTopOnly
+                                    ? active_mb && opts.roundMbTopOnly
                                         ? ROUNDED_TOP
                                         : ROUNDED_ALL
-                                : ROUNDED_ALL,
+                                    : ROUNDED_ALL,
                      new_state=GTK_STATE_PRELIGHT==state ? GTK_STATE_NORMAL : state;
             gboolean border=pbar || menuitem || mb,
                      stdColors=!mb || SHADE_BLEND_SELECTED!=opts.shadeMenubars,
@@ -3708,6 +3711,7 @@ static void gtkDrawShadow(GtkStyle *style, GdkWindow *window, GtkStateType state
     {
         gboolean frame=!detail || 0==strcmp(detail, "frame"),
                  profiledFrame=DETAIL("scrolled_window"),
+                 viewport=!profiledFrame && detail && NULL!=strstr(detail, "viewport"),
                  statusBar=isMozilla() || GTK_APP_JAVA==qtSettings.app
                             ? frame : isStatusBarFrame(widget);
 
@@ -3719,13 +3723,17 @@ static void gtkDrawShadow(GtkStyle *style, GdkWindow *window, GtkStateType state
 
         sanitizeSize(window, &width, &height);
 
-        if(!statusBar && (frame || profiledFrame) && QTC_ROUNDED)
+        if(!statusBar && (frame || profiledFrame || viewport) && QTC_ROUNDED)
         {
             if(GTK_SHADOW_NONE!=shadow_type &&
                (!frame || opts.drawStatusBarFrames || (!isMozilla() && GTK_APP_JAVA!=qtSettings.app)))
-              drawBorder(style, window, state, area, NULL, x, y, width, height, NULL,
-                         NULL, NULL, ROUNDED_ALL, profiledFrame ? BORDER_SUNKEN : BORDER_FLAT,
-                         WIDGET_OTHER, DF_LARGE_ARC|DF_BLEND|DF_DO_CORNERS);
+            {
+                if(viewport)
+                    gdk_draw_rectangle(window, qtcurveStyle->background_gc[ORIGINAL_SHADE], FALSE, x, y, width, height);
+                drawBorder(style, window, state, area, NULL, x, y, width, height, NULL,
+                           NULL, NULL, ROUNDED_ALL, profiledFrame ? BORDER_SUNKEN : BORDER_FLAT,
+                           WIDGET_OTHER, DF_LARGE_ARC|DF_BLEND|(viewport ? 0 : DF_DO_CORNERS));
+            }
         }
         else if(!statusBar || opts.drawStatusBarFrames)
         {
@@ -3923,7 +3931,7 @@ debugDisplayWidget(widget, 3);
         {
             GdkGC *bgndGc=/*!isList(widget) && */GTK_STATE_INSENSITIVE==state
                             ? style->bg_gc[GTK_STATE_NORMAL]
-                            : GTK_STATE_PRELIGHT==state
+                            : !mnu && GTK_STATE_PRELIGHT==state
                                 ? gcs[QTC_CR_MO_FILL]
                                 : style->base_gc[GTK_STATE_NORMAL];
 
@@ -3938,7 +3946,7 @@ debugDisplayWidget(widget, 3);
         {
             GdkColor *bgndCol=/*!isList(widget) && */GTK_STATE_INSENSITIVE==state
                                 ? &style->bg[GTK_STATE_NORMAL]
-                                : GTK_STATE_PRELIGHT==state
+                                : !mnu && GTK_STATE_PRELIGHT==state
                                     ? &colors[QTC_CR_MO_FILL]
                                     : &style->base[GTK_STATE_NORMAL];
 
@@ -4114,7 +4122,7 @@ static void gtkDrawOption(GtkStyle *style, GdkWindow *window, GtkStateType state
             {
                 GdkGC *bgndGc=GTK_STATE_INSENSITIVE==state
                                 ? style->bg_gc[GTK_STATE_NORMAL]
-                                : GTK_STATE_PRELIGHT==state
+                                : !mnu && GTK_STATE_PRELIGHT==state
                                     ? gcs[QTC_CR_MO_FILL]
                                     : style->base_gc[GTK_STATE_NORMAL];
                 if(area)
@@ -4128,7 +4136,7 @@ static void gtkDrawOption(GtkStyle *style, GdkWindow *window, GtkStateType state
             {
                 GdkColor *bgndCol=GTK_STATE_INSENSITIVE==state
                                     ? &style->bg[GTK_STATE_NORMAL]
-                                    : GTK_STATE_PRELIGHT==state
+                                    : !mnu && GTK_STATE_PRELIGHT==state
                                         ? &colors[QTC_CR_MO_FILL]
                                         : &style->base[GTK_STATE_NORMAL];
 

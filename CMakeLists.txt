@@ -8,7 +8,7 @@ set(DEBIAN_PACKAGE_SECTION "gtk")
 set(CPACK_SOURCE_GENERATOR "TBZ2")
 set(CPACK_PACKAGE_VERSION_MAJOR "0")
 set(CPACK_PACKAGE_VERSION_MINOR "55")
-set(CPACK_PACKAGE_VERSION_PATCH "2")
+set(CPACK_PACKAGE_VERSION_PATCH "3")
 set(CPACK_PACKAGE_CONTACT "Craig Drummond <Craig.Drummond@lycos.co.uk>")
 set(QTCURVE_VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}")
 set(QTCURVE_VERSION_FULL "${QTCURVE_VERSION}.${CPACK_PACKAGE_VERSION_PATCH}")
@@ -39,17 +39,17 @@ if (GTK_INCLUDE_DIR)
     file(TO_CMAKE_PATH "$ENV{KDEDIRS}" _KDEDIRS)
 
     find_program(KDE4CONFIG_EXECUTABLE NAMES kde4-config
-                 PATHS ${CMAKE_INSTALL_PREFIX}/bin ${_KDEDIRS} /opt/kde4/bin NO_DEFAULT_PATH )
+                 PATHS ${CMAKE_INSTALL_PREFIX}/bin ${_KDEDIRS} /opt/kde4/bin /usr/lib/kde4/bin NO_DEFAULT_PATH )
 
     if(NOT KDE4CONFIG_EXECUTABLE)
         find_program(KDE4CONFIG_EXECUTABLE NAMES kde4-config )
     endif(NOT KDE4CONFIG_EXECUTABLE)
 
     if(KDE4CONFIG_EXECUTABLE)
-        exec_program(${KDE4_CONFIG_EXECUTABLE}
+        exec_program(${KDE4CONFIG_EXECUTABLE}
                     ARGS --expandvars --install icon
                     OUTPUT_VARIABLE KDE4_ICONS_PREFIX)
-        exec_program(${KDE4_CONFIG_EXECUTABLE}
+        exec_program(${KDE4CONFIG_EXECUTABLE}
                      ARGS --prefix
                      OUTPUT_VARIABLE KDE4PREFIX)
     endif(KDE4CONFIG_EXECUTABLE)
