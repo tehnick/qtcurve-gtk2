@@ -1,5 +1,5 @@
 /*
-  QtCurve (C) Craig Drummond, 2003 - 2007 Craig.Drummond@lycos.co.uk
+  QtCurve (C) Craig Drummond, 2003 - 2008 Craig.Drummond@lycos.co.uk
 
   ----
 
@@ -17,6 +17,12 @@
   the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
   Boston, MA 02110-1301, USA.
  */
+
+/*
+ * Menu stripe is disabled for Gtk2, as I'm not sure what todo about menus without icons!
+#define QTC_GTK2_MENU_STRIPE
+#define QTC_GTK2_MENU_STRIPE_HACK_MENU
+*/
 
 #include <gmodule.h>
 #include <gtk/gtk.h>
@@ -58,6 +64,23 @@ static void gtkDrawBox(GtkStyle *style, GdkWindow *window, GtkStateType state,
                        const gchar *detail, gint x, gint y, gint width, gint height);
 
 #ifdef QTC_DEBUG
+static void dumpChildren(GtkWidget *widget, int level)
+{
+    if(level<5)
+    {
+        GList *child=GTK_BOX(widget)->children;
+
+        for(; child; child=child->next)
+        {
+            GtkBoxChild *boxChild=(GtkBoxChild *)child->data;
+
+            printf(":[%d]%s:", level, gtk_type_name(GTK_WIDGET_TYPE(boxChild->widget)));
+            if(GTK_IS_BOX(boxChild->widget))
+                dumpChildren(boxChild->widget, ++level);
+        }
+    }
+}
+
 static void debugDisplayWidget(GtkWidget *widget, int level)
 {
     if(level>=0)
@@ -68,6 +91,22 @@ static void debugDisplayWidget(GtkWidget *widget, int level)
             printf("[%d, %dx%d : %d,%d , %0X] ", widget->state, widget->allocation.x,
                    widget->allocation.y,
                    widget->allocation.width, widget->allocation.height, widget->window);*/
+#ifdef QTC_GTK2_MENU_STRIPE
+        if(GTK_IS_WINDOW(widget))
+        {
+            printf("{%X}", (int)GTK_WINDOW(widget)->transient_parent);
+            if(GTK_WINDOW(widget)->transient_parent && GTK_BIN(GTK_WINDOW(widget)->transient_parent)->child)
+            {
+                printf("/%s(%s)[%x]/",
+                          gtk_type_name(GTK_WIDGET_TYPE(GTK_BIN(GTK_WINDOW(widget)->transient_parent)->child)),
+                          GTK_BIN(GTK_WINDOW(widget)->transient_parent)->child->name
+                             ? GTK_BIN(GTK_WINDOW(widget)->transient_parent)->child->name : "NULL",
+                         (int)GTK_BIN(GTK_WINDOW(widget)->transient_parent)->child);
+                if(GTK_IS_BOX(GTK_BIN(GTK_WINDOW(widget)->transient_parent)->child))
+                    dumpChildren(GTK_BIN(GTK_WINDOW(widget)->transient_parent)->child, 0);
+            }
+        }
+#endif
         if(widget && widget->parent)
             debugDisplayWidget(widget->parent, --level);
         else
@@ -232,6 +271,15 @@ static void generateMidColor(GdkColor *a, GdkColor *b, GdkColor *mid, double fac
     mid->red=(a->red+limit(b->red*factor))>>1;
     mid->green=(a->green+limit(b->green*factor))>>1;
     mid->blue=(a->blue+limit(b->blue*factor))>>1;
+}
+
+static void tintColor(GdkColor *a, GdkColor *b, GdkColor *mid, double factor)
+{
+    *mid=*b;
+
+    mid->red=limit((a->red+(factor*b->red))/(1+factor));
+    mid->green=limit((a->green+(factor*b->green))/(1+factor));
+    mid->blue=limit((a->blue+(factor*b->blue))/(1+factor));
 }
 
 static GdkGC * getTempGc(QtCurveStyle *qtcurveStyle, int num, GdkWindow *window)
@@ -502,54 +550,6 @@ struct _GtkRangeLayout
                  stepper_d;
 };
 
-static gboolean isStepperA(GtkWidget *widget, gint x, gint y)
-{
-    if (GTK_IS_RANGE(widget))
-    {
-        GtkRange * range = GTK_RANGE(widget);
-        return range->has_stepper_a && withinRect(&(range->layout->stepper_a),
-                                                  x-widget->allocation.x, y-widget->allocation.y);
-    }
-
-    return FALSE;
-}
-
-static gboolean isStepperB(GtkWidget *widget, gint x, gint y)
-{
-    if (GTK_IS_RANGE(widget))
-    {
-        GtkRange * range = GTK_RANGE(widget);
-        return range->has_stepper_b && withinRect(&(range->layout->stepper_b),
-                                                  x-widget->allocation.x, y-widget->allocation.y);
-    }
-
-    return FALSE;
-}
-
-static gboolean isStepperC(GtkWidget *widget, gint x, gint y)
-{
-    if (GTK_IS_RANGE(widget))
-    {
-        GtkRange * range = GTK_RANGE(widget);
-        return range->has_stepper_c && withinRect(&(range->layout->stepper_c),
-                                                  x-widget->allocation.x, y-widget->allocation.y);
-    }
-
-    return FALSE;
-}
-
-static gboolean isStepperD(GtkWidget *widget, gint x, gint y)
-{
-    if (GTK_IS_RANGE(widget))
-    {
-        GtkRange *range = GTK_RANGE(widget);
-        return range->has_stepper_d && withinRect(&(range->layout->stepper_d),
-                                                  x-widget->allocation.x, y-widget->allocation.y);
-    }
-
-    return FALSE;
-}
-
 typedef enum
 {
     QTC_STEPPER_A,
@@ -563,15 +563,19 @@ static EStepper getStepper(GtkWidget *widget, int x, int y)
 {
     if(GTK_IS_RANGE(widget))
     {
-        if(isStepperA(widget, x, y))
+        GtkRange *range=GTK_RANGE(widget);
+        int      xa=x-widget->allocation.x,
+                 ya=y-widget->allocation.y;
+
+        if(range->has_stepper_a && withinRect(&(range->layout->stepper_a), xa, ya))
             return GTK_APP_NEW_MOZILLA==qtSettings.app && (x>10 || y>10)
                 ? QTC_STEPPER_C
                 : QTC_STEPPER_A;
-        else if(isStepperB(widget, x, y))
+        else if(range->has_stepper_b && withinRect(&(range->layout->stepper_b), xa, ya))
             return QTC_STEPPER_B;
-        else if(isStepperC(widget, x, y))
+        else if(range->has_stepper_c && withinRect(&(range->layout->stepper_c), xa, ya))
             return QTC_STEPPER_C;
-        else if(isStepperD(widget, x, y))
+        else if(range->has_stepper_d && withinRect(&(range->layout->stepper_d), xa, ya))
             return GTK_APP_NEW_MOZILLA==qtSettings.app && (x<18 && y<18)
                 ? QTC_STEPPER_B
                 : QTC_STEPPER_D;
@@ -656,6 +660,42 @@ static gboolean isHorizontalProgressbar(GtkWidget *widget)
             return FALSE;
     }
 }
+
+static gboolean isComboboxPopupWindow(GtkWidget *widget)
+{
+    return widget && widget->name && GTK_IS_WINDOW(widget) &&
+           0==strcmp(widget->name, "gtk-combobox-popup-window");
+}
+
+static gboolean isComboList(GtkWidget *widget)
+{
+    return widget && widget->parent && GTK_IS_FRAME(widget) && isComboboxPopupWindow(widget->parent);
+}
+
+#ifdef QTC_GTK2_MENU_STRIPE
+static gboolean isComboMenu(GtkWidget *widget)
+{
+    if(widget && widget->name && GTK_IS_MENU(widget) && 0==strcmp(widget->name, "gtk-combobox-popup-menu"))
+        return TRUE;
+    else
+    {
+        GtkWidget *top=gtk_widget_get_toplevel(widget);
+
+        return top && (isComboboxPopupWindow(GTK_BIN(top)->child) ||
+                       GTK_IS_DIALOG(top) || /* Dialogs should not have menus! */
+                       (GTK_IS_WINDOW(top) && GTK_WINDOW(top)->transient_parent &&
+                        GTK_BIN(GTK_WINDOW(top)->transient_parent)->child &&
+                        isComboMenu(GTK_BIN(GTK_WINDOW(top)->transient_parent)->child)));
+    }
+}
+#endif
+
+#if 0
+static gboolean isComboFrame(GtkWidget *widget)
+{
+    return !GTK_IS_COMBO_BOX_ENTRY(widget) && GTK_IS_FRAME(widget) && widget->parent && GTK_IS_COMBO_BOX(widget->parent);
+}
+#endif
 
 static int progressbarRound(GtkWidget *widget, gboolean rev)
 {
@@ -1165,6 +1205,32 @@ static gboolean pixbufCacheKeyEqual(gconstpointer k1, gconstpointer k2)
            a->col.blue==b->col.blue;
 }
 
+#ifdef QTC_GTK2_MENU_STRIPE_HACK_MENU
+#ifdef __SUNPRO_C
+#pragma align 4 (my_pixbuf)
+#endif
+#ifdef __GNUC__
+static const guint8 blank16x16[] __attribute__ ((__aligned__ (4))) =
+#else
+static const guint8 blank16x16[] =
+#endif
+{ ""
+  /* Pixbuf magic (0x47646b50) */
+  "GdkP"
+  /* length: header (24) + pixel_data (15) */
+  "\0\0\0'"
+  /* pixdata_type (0x2010002) */
+  "\2\1\0\2"
+  /* rowstride (64) */
+  "\0\0\0@"
+  /* width (16) */
+  "\0\0\0\20"
+  /* height (16) */
+  "\0\0\0\20"
+  /* pixel_data: */
+  "\377\0\0\0\0\377\0\0\0\0\202\0\0\0\0"};
+#endif
+
 static GdkPixbuf * pixbufCacheValueNew(QtCPixKey *key)
 {
     GdkPixbuf *res=NULL;
@@ -1195,6 +1261,10 @@ static GdkPixbuf * pixbufCacheValueNew(QtCPixKey *key)
         case PIX_SLIDER_LIGHT_V:
             res=gdk_pixbuf_new_from_inline(-1, slider_light_v, TRUE, NULL);
             break;
+#ifdef QTC_GTK2_MENU_STRIPE_HACK_MENU
+        case PIX_BLANK:
+            return gdk_pixbuf_new_from_inline(-1, blank16x16, TRUE, NULL);
+#endif
     }
 
     adjustPix(gdk_pixbuf_get_pixels(res), gdk_pixbuf_get_n_channels(res), gdk_pixbuf_get_width(res),
@@ -2057,7 +2127,7 @@ debugDisplayWidget(widget, 3);
         midgc=style->base_gc[state];
 
     gdk_draw_rectangle(window, enabled ? style->base_gc[state] : style->bg_gc[GTK_STATE_INSENSITIVE],
-                       TRUE, x, y, width, height);
+                       TRUE, x+2, y+2, width-4, height-4);
     gdk_draw_line(window, midgc, x+1, y+1, x+1, y+height-2);
     gdk_draw_line(window, midgc, x+1, y+1, x+width-1, y+1);
 
@@ -2326,7 +2396,11 @@ debugDisplayWidget(widget, 3);
                           gcs, area, 3, 0, TRUE);
         }
     }
-    else if((DETAIL("handlebox") && widget && GTK_IS_HANDLE_BOX(widget)) || DETAIL("dockitem") || paf)
+    /* Note: I'm not sure why the 'widget && GTK_IS_HANDLE_BOX(widget)' is in the following 'if' - its been there for a while.
+             But this breaks the toolbar handles for Java Swing apps. I'm leaving it in for non Java apps, as there must've been
+             a reason for it.... */
+    else if((DETAIL("handlebox") && (GTK_APP_JAVA==qtSettings.app || (widget && GTK_IS_HANDLE_BOX(widget)))) ||
+            DETAIL("dockitem") || paf)
     {
 #ifdef QTC_MOUSEOVER_HANDLES
         int *handleHash=NULL;
@@ -2879,6 +2953,12 @@ debugDisplayWidget(widget, 3);
                 }
 #endif
 
+                if(defBtn && !custom_c && IND_TINT==opts.defBtnIndicator)
+                {
+                    btn_gcs=qtcurveStyle->defbtn_gc;
+                    btn_colors=qtcurveStyle->defbtn;
+                }
+
                 drawLightBevel(style, window, state, area, NULL, x, y, width, height,
                                &btn_colors[bgnd], NULL, btn_gcs, btn_colors, NULL, round, widgetType,
                                BORDER_FLAT, (!checkbox && width>=QTC_MIN_BTN_SIZE &&
@@ -2913,10 +2993,11 @@ debugDisplayWidget(widget, 3);
             if(defBtn)
                 if(IND_CORNER==opts.defBtnIndicator)
                 {
-                    int      offset=sunken ? 4 : 3;
-                    GdkGC    *gc=btn_gcs[GTK_STATE_ACTIVE==state ? 0 : 4];
-                    GdkPoint points[3] = { { x+offset, y+offset+1 }, { x+offset+6, y+offset+1},
-                                           { x+offset, y+offset+7}};
+                    int      offset=sunken ? 5 : 4,
+                             etchOffset=QTC_DO_EFFECT ? 1 : 0;
+                    GdkGC    *gc=qtcurveStyle->mouseover_gc[GTK_STATE_ACTIVE==state ? 0 : 4];
+                    GdkPoint points[3] = { { x+offset, y+offset+etchOffset }, { x+offset+6, y+offset+etchOffset},
+                                           { x+offset, y+offset+6+etchOffset}};
 
                     if(area)
                         gdk_gc_set_clip_rectangle(gc, area);
@@ -3395,6 +3476,25 @@ debugDisplayWidget(widget, 3);
                    horizPbar=isHorizontalProgressbar(widget);
         int        animShift=-PROGRESS_CHUNK_WIDTH;
 
+#ifdef QTC_GTK2_MENU_STRIPE_HACK_MENU /* This hack doesnt work! not all items are gtkImageMenuItems's
+         -> and if tey are they're drawn first incorrectly :-( */
+        if(!mb && menuitem && GTK_IS_IMAGE_MENU_ITEM(widget) &&
+           (0L==gtk_image_menu_item_get_image(GTK_IMAGE_MENU_ITEM(widget)) ||
+            (GTK_IS_IMAGE(gtk_image_menu_item_get_image(GTK_IMAGE_MENU_ITEM(widget))) &&
+             GTK_IMAGE_EMPTY==gtk_image_get_storage_type(GTK_IMAGE(gtk_image_menu_item_get_image(GTK_IMAGE_MENU_ITEM(widget)))))))
+        {
+            // Give it a blank icon - so that menuStripe looks ok, plus this matched KDE style!
+            if(0L==gtk_image_menu_item_get_image(GTK_IMAGE_MENU_ITEM(widget)))
+            {
+                gtk_image_menu_item_set_image(GTK_IS_IMAGE_MENU_ITEM(widget),
+                                              gtk_image_new_from_pixbuf(getPixbuf(qtcurveStyle->check_radio, PIX_BLANK, 1.0)));
+            }
+            else
+            gtk_image_set_from_pixbuf(GTK_IMAGE(gtk_image_menu_item_get_image(GTK_IMAGE_MENU_ITEM(widget))),
+                                        getPixbuf(qtcurveStyle->check_radio, PIX_BLANK, 1.0));
+        }
+#endif
+
         if(pbar && STRIPE_NONE!=opts.stripedProgress)
         {
             GdkRectangle rect={x, y, width-2, height-2};
@@ -3483,8 +3583,9 @@ debugDisplayWidget(widget, 3);
            empty menubar item is drawn on the right - and doesnt disappear! */
         if(!mb || width>12)
         {
-            GdkColor *itemCols=!opts.colorMenubarMouseOver && mb && !active_mb ? qtcurveStyle->background : qtcurveStyle->menuitem;
-            GdkGC    **itemGcs=!opts.colorMenubarMouseOver && mb && !active_mb ? qtcurveStyle->background_gc : qtcurveStyle->menuitem_gc;
+            gboolean grayItem=!opts.colorMenubarMouseOver && mb && !active_mb && GTK_APP_OPEN_OFFICE!=qtSettings.app;
+            GdkColor *itemCols=grayItem ? qtcurveStyle->background : qtcurveStyle->menuitem;
+            GdkGC    **itemGcs=grayItem ? qtcurveStyle->background_gc : qtcurveStyle->menuitem_gc;
             GdkColor *bgnd=qtcurveStyle->menubar_gc[0] && mb && !isMozilla() && GTK_APP_JAVA!=qtSettings.app
                             ? &qtcurveStyle->menubar[ORIGINAL_SHADE] : NULL;
             int      round=pbar ? progressbarRound(widget, rev)
@@ -3606,6 +3707,15 @@ debugDisplayWidget(widget, 3);
             }
         }
 
+#ifdef QTC_GTK2_MENU_STRIPE
+        if(opts.menuStripe && !isComboMenu(widget))
+            drawBevelGradient(style, window, area, NULL, x+2, y+2, isMozilla() ? 18 : 22, height-4,
+                              &qtcurveStyle->background[opts.lighterPopupMenuBgnd ? ORIGINAL_SHADE : 3],
+                              getWidgetShade(WIDGET_OTHER, TRUE, FALSE, opts.appearance),
+                              getWidgetShade(WIDGET_OTHER, FALSE, FALSE, opts.appearance),
+                              FALSE, TRUE, FALSE, opts.appearance, WIDGET_OTHER);
+#endif
+
         if(area)
             gdk_gc_set_clip_rectangle(qtcurveStyle->background_gc[QT_STD_BORDER], area);
 
@@ -3663,19 +3773,6 @@ static void gtkDrawBox(GtkStyle *style, GdkWindow *window, GtkStateType state,
     drawBox(style, window, state, shadow_type, area, widget, detail, x, y, width, height,
             GTK_STATE_ACTIVE==state || (GTK_IS_BUTTON(widget) && GTK_BUTTON(widget)->depressed));
 }
-
-static int isComboList(GtkWidget *widget)
-{
-    return widget && widget->parent && widget->parent->name && GTK_IS_FRAME(widget) && GTK_IS_WINDOW(widget->parent) &&
-           0==strcmp(widget->parent->name, "gtk-combobox-popup-window");
-}
-
-#if 0
-static int isComboFrame(GtkWidget *widget)
-{
-    return !GTK_IS_COMBO_BOX_ENTRY(widget) && GTK_IS_FRAME(widget) && widget->parent && GTK_IS_COMBO_BOX(widget->parent);
-}
-#endif
 
 static void gtkDrawShadow(GtkStyle *style, GdkWindow *window, GtkStateType state,
                           GtkShadowType shadow_type, GdkRectangle *area, GtkWidget *widget,
@@ -3889,7 +3986,7 @@ static void gtkDrawCheck(GtkStyle *style, GdkWindow *window, GtkStateType state,
     }
 
 #ifdef QTC_DEBUG
-printf("Draw check %d %d %d %s  ", state, shadow_type, mnu, detail ? detail : "NULL");
+printf("Draw check %d %d %d %d %d %d %d %s  ", state, shadow_type, x, y, width, height, mnu, detail ? detail : "NULL");
 debugDisplayWidget(widget, 3);
 #endif
 
@@ -3908,6 +4005,12 @@ debugDisplayWidget(widget, 3);
     }
     else
 #endif
+    if(mnu && GTK_APP_OPEN_OFFICE==qtSettings.app)
+    {
+        x+=2;
+        y-=2;
+    }
+
     if(!mnu || qtSettings.qt4)
     {
         gboolean coloredMouseOver=GTK_STATE_PRELIGHT==state && opts.coloredMouseOver;
@@ -4060,6 +4163,10 @@ static void gtkDrawOption(GtkStyle *style, GdkWindow *window, GtkStateType state
 
         x+=(width-QTC_RADIO_SIZE)>>1;
         y+=(height-QTC_RADIO_SIZE)>>1;
+
+        /* For some reason, radios dont look aligned properly - most noticeable with menuStripe set */
+        if(!isMozilla())
+            x-=3;
 
 /*
         if(list)
@@ -5604,7 +5711,7 @@ static void styleRealize(GtkStyle *style)
     }
 
     qtcurveStyle->defbtn_gc[0]=NULL;
-    if(IND_COLORED==opts.defBtnIndicator)
+    if(IND_COLORED==opts.defBtnIndicator || IND_TINT==opts.defBtnIndicator)
     {
         if(SHADE_BLEND_SELECTED==opts.shadeSliders)
             memcpy(qtcurveStyle->defbtn_gc, qtcurveStyle->slider_gc,
@@ -5726,7 +5833,15 @@ static void generateColors(QtCurveStyle *qtcurveStyle)
             break;
     }
 
-    if(IND_COLORED==opts.defBtnIndicator)
+    if(IND_TINT==opts.defBtnIndicator)
+    {
+        GdkColor col;
+
+        tintColor(&qtcurveStyle->button[ORIGINAL_SHADE],
+                  &qtcurveStyle->menuitem[ORIGINAL_SHADE], &col, 0.2);
+        shadeColors(&col, qtcurveStyle->defbtn);
+    }
+    else if(IND_COLORED==opts.defBtnIndicator)
     {
         if(SHADE_BLEND_SELECTED==opts.shadeSliders)
             memcpy(qtcurveStyle->defbtn, qtcurveStyle->slider, sizeof(GdkColor)*(TOTAL_SHADES+1));

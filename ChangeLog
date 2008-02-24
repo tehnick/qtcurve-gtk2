@@ -1,3 +1,16 @@
+0.56
+----
+1. Change default settings:
+        Dont animate progressbars
+        Frameless groupboxes
+2. Correctly position corner indicator.
+3. Use mouse over colours for corner indicator.
+4. Fix for text of selected check/radios on menubars in Java swing apps.
+5. Fix for toolbar handles of Java swing apps.
+6. Fix for GtkEntry's within toolbars.
+7. OpenOffice.org fixes - entry fields, menubar items, checks in menus.
+8. Option to tint the default button colour.
+
 0.55.3
 ------
 1. Hack around a slight menubar problem with pidgin.
