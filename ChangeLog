@@ -1,3 +1,15 @@
+0.58
+----
+1. Add a config option for selection appearance - defaults to flat.
+2. Fix entry fields and dark colour schemes.
+3. Use background colour for disabled scrollbar buttons.
+4. Make custom styles work under Qt4 as well.
+5. Make 'slight' rounding more 'slight' -  as per pre-cairo version.
+6. Help with temporary Gtk window beeing seen when QtCurve is
+   configured with -DQTC_ADD_EVENT_FILTER=true
+7. Fix memory leak - forgot to call cairo_destroy
+8. Lighter menu separators.
+
 0.57.1
 ------
 1. Better arrows positions on scrollbar steppers B and C.

@@ -7,8 +7,8 @@ set(DEBIAN_PACKAGE_DESCRIPTION "QtCurve for Gtk2")
 set(DEBIAN_PACKAGE_SECTION "gtk")
 set(CPACK_SOURCE_GENERATOR "TBZ2")
 set(CPACK_PACKAGE_VERSION_MAJOR "0")
-set(CPACK_PACKAGE_VERSION_MINOR "57")
-set(CPACK_PACKAGE_VERSION_PATCH "1")
+set(CPACK_PACKAGE_VERSION_MINOR "58")
+set(CPACK_PACKAGE_VERSION_PATCH "0")
 set(CPACK_PACKAGE_CONTACT "Craig Drummond <Craig.Drummond@lycos.co.uk>")
 set(QTCURVE_VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}")
 set(QTCURVE_VERSION_FULL "${QTCURVE_VERSION}.${CPACK_PACKAGE_VERSION_PATCH}")
@@ -102,7 +102,7 @@ if (GTK_INCLUDE_DIR)
         message("\n\n**************************************************************\n"
                 "Warning: You have enabled the KDE event filter, this has been\n"
                 "         reported to interfere with firefox and crash some\n"
-                "         applications\n"
+                "         applications. USE AT YOUR OWN RISK!\n"
                 "**************************************************************\n\n\n")
     endif(QTC_ADD_EVENT_FILTER)
     if(QTC_REORDER_GTK_DIALOG_BUTTONS)

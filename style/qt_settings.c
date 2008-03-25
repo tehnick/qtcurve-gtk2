@@ -518,7 +518,9 @@ static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboo
                     found|=RD_INACT_PALETTE;
                 }
 #endif
-                else if (SECT_GENERAL==section && rd&RD_STYLE && !(found&RD_STYLE) && 0==strncmp_i(line, "style=", 6))
+                else if (((!qt4 && SECT_GENERAL==section) || (qt4 && SECT_QT==section)) &&
+                         rd&RD_STYLE && !(found&RD_STYLE)&& 0==strncmp_i(line, "style=", 6))
+
                 {
                     int len=strlen(line);
                     qtSettings.styleName=realloc(qtSettings.styleName, strlen(&line[6])+1);
@@ -1210,13 +1212,17 @@ static void qtcAddEventFilter() /* GdkWindow *widget) */
         /* Create a new window, and set the KDE_DESKTOP_WINDOW property on it
            This window will then receive events from KDE when the style changes */
 
-        GtkWindow *top=gtk_window_new(GTK_WINDOW_TOPLEVEL);
+        GtkWidget *top=gtk_window_new(GTK_WINDOW_TOPLEVEL);
 
         if(top && GTK_IS_WIDGET(top))
         {
             long data = 1;
 
             gtk_window_iconify(GTK_WINDOW(top));
+            gtk_window_set_decorated(GTK_WINDOW(top), FALSE);
+            gtk_window_set_keep_below(GTK_WINDOW(top), TRUE);
+            gtk_window_set_opacity(GTK_WINDOW(top), 100);
+            gtk_window_set_type_hint(GTK_WINDOW(top), GDK_WINDOW_TYPE_HINT_DOCK);
             gtk_widget_show(top);
             gtk_window_set_skip_taskbar_hint(GTK_WINDOW(top), TRUE);
             gtk_window_set_skip_pager_hint(GTK_WINDOW(top), TRUE);
