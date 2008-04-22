@@ -134,7 +134,8 @@ struct QtData
                     *styleName;
     GtkToolbarStyle toolbarStyle;
     struct QtIcons  iconSizes;
-    gboolean        buttonIcons;
+    gboolean        buttonIcons,
+                    shadeSortedList;
     EGtkApp         app;
     gboolean        qt4;
 };
@@ -249,7 +250,8 @@ enum
     RD_BUTTON_ICONS      = 0x0080,
     RD_SMALL_ICON_SIZE   = 0x0100,
     RD_LIST_COLOR        = 0x0200,
-    RD_STYLE             = 0x0400
+    RD_STYLE             = 0x0400,
+    RD_LIST_SHADE        = 0x0800
 };
 
 static char * getKdeHome()
@@ -504,6 +506,17 @@ static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboo
 
                     found|=RD_LIST_COLOR;
                 }
+                else if(SECT_GENERAL==section && rd&RD_LIST_SHADE && !(found&RD_LIST_SHADE) &&
+                        0==strncmp_i(line, "shadeSortColumn=", 16))
+                {
+                    char *eq=strstr(line, "=");
+
+                    if(eq && ++eq)
+                    {
+                        qtSettings.shadeSortedList=0==strncmp_i(eq, "true", 4);
+                        found|=RD_LIST_SHADE;
+                    }
+                }
                 else if(( (!qt4 && SECT_PALETTE==section) || (qt4 && SECT_QT==section)) && rd&RD_ACT_PALETTE && !(found&RD_ACT_PALETTE) &&
                         (qt4 ? 0==strncmp_i(line, "Palette\\active=", 15) : 0==strncmp_i(line, "active=", 7)))
                 {
@@ -527,6 +540,7 @@ static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboo
                     if('\n'==line[len-1])
                         line[len-1]='\0';
                     strcpy(qtSettings.styleName, &line[6]);
+                    found|=RD_STYLE;
                 }
                 else if (( !qt4 && SECT_GENERAL==section && rd&RD_FONT && !(found&RD_FONT) &&
                             0==strncmp_i(line, "font=", 5)) ||
@@ -703,7 +717,8 @@ printf("REQUEST FONT: %s\n", qtSettings.font);
         qtSettings.toolbarStyle=GTK_TOOLBAR_ICONS;
     if(rd&RD_BUTTON_ICONS && !(found&RD_BUTTON_ICONS))
         qtSettings.buttonIcons=TRUE;
-
+    if(rd&RD_LIST_SHADE && !(found&RD_LIST_SHADE))
+        qtSettings.shadeSortedList=TRUE;
     return found;
 }
 
@@ -1277,6 +1292,29 @@ static gboolean checkFileVersion(const char *fname, const char *versionStr, int 
     return !diff;
 }
 
+static gboolean isMozApp(const char *app, const char *check)
+{
+    if(0==strcmp(app, check))
+        return TRUE;
+    else if(app==strstr(app, check))
+    {
+        int app_len=strlen(app),
+            check_len=strlen(check);
+
+        if(check_len+4 == app_len && 0==strcmp(&app[check_len], "-bin"))
+            return TRUE;
+
+        /* OK check for xulrunner-1.9 */
+        {
+        double dummy;
+        if(app_len>(check_len+1) && 1==sscanf(&app[check_len+1], "%f", &dummy))
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
 static gboolean qtInit(Options *opts)
 {
     if(0==qt_refs++)
@@ -1337,6 +1375,20 @@ static gboolean qtInit(Options *opts)
                 qtSettings.qt4=TRUE;
             }
 
+            /* Only for testing - allows me to simulate Qt's -style parameter. e.g start Gtk2 app as follows:
+
+                QTC_STYLE=qtc_klearlooks gtk-demo
+            */
+            {
+                const char *env=getenv("QTC_STYLE");
+
+                if(env)
+                {
+                    qtSettings.styleName=realloc(qtSettings.styleName, strlen(env));
+                    strcpy(qtSettings.styleName, env);
+                }
+            }
+
             /* Is the user using a non-default QtCurve style? */
             if(qtSettings.styleName && qtSettings.styleName==strstr(qtSettings.styleName, QTC_THEME_PREFIX))
             {
@@ -1365,11 +1417,10 @@ static gboolean qtInit(Options *opts)
             /* Check if we're firefox... */
             if((app=getAppName()))
             {
-                gboolean firefox=0==strcmp(app, "firefox-bin") ||
-                                 0==strcmp(app, "iceweasel-bin") ||
-                                  0==strcmp(app, "swiftfox-bin"),
-                         thunderbird=!firefox && 0==strcmp(app, "thunderbird-bin"),
-                         mozThunderbird=!thunderbird && !firefox && 0==strcmp(app, "mozilla-thunderbird-bin");
+                gboolean firefox=isMozApp(app, "firefox") || isMozApp(app, "iceweasel") ||
+                                 isMozApp(app, "swiftfox") || isMozApp(app, "xulrunner"),
+                         thunderbird=!firefox && isMozApp(app, "thunderbird"),
+                         mozThunderbird=!thunderbird && !firefox && isMozApp(app, "mozilla-thunderbird");
 
                 if(firefox || thunderbird || mozThunderbird)
                 {
@@ -1489,7 +1540,7 @@ static gboolean qtInit(Options *opts)
                 opts->shadeMenubars=SHADE_NONE;
 
             readRc(kdeGlobals(),
-                   (opts->mapKdeIcons ? RD_ICONS|RD_SMALL_ICON_SIZE : 0)|RD_TOOLBAR_STYLE|RD_TOOLBAR_ICON_SIZE|RD_BUTTON_ICONS|RD_LIST_COLOR,
+                   (opts->mapKdeIcons ? RD_ICONS|RD_SMALL_ICON_SIZE : 0)|RD_TOOLBAR_STYLE|RD_TOOLBAR_ICON_SIZE|RD_BUTTON_ICONS|RD_LIST_COLOR|RD_LIST_SHADE,
                     opts, TRUE, FALSE, FALSE);
 
             /* Tear off menu items dont seem to draw they're background, and the default background
@@ -1693,7 +1744,7 @@ static gboolean qtInit(Options *opts)
             }
 
             /* Set cursor colours... */
-            {
+            { /* C-Scope */
                 static const char *constStrFormat="style \"QtCCrsr\" "
                                                     "{ GtkWidget::cursor-color=\"#%02X%02X%02X\" "
                                                       "GtkWidget::secondary-cursor-color=\"#%02X%02X%02X\" } "
@@ -1707,7 +1758,72 @@ static gboolean qtInit(Options *opts)
                                                 qtSettings.colors[PAL_ACTIVE][COLOR_TEXT].green>>8,
                                                 qtSettings.colors[PAL_ACTIVE][COLOR_TEXT].blue>>8);
                 gtk_rc_parse_string(tmpStr);
-            }
+            } /* C-Scope */
+
+            if(!opts->gtkScrollViews && NULL!=gtk_check_version(2, 12, 0))
+                opts->gtkScrollViews=true;
+
+            { /* C-Scope */
+            bool doEffect=ROUND_FULL==opts->round && EFFECT_NONE!=opts->buttonEffect;
+            int  thickness=2;
+
+            if(doEffect)
+                gtk_rc_parse_string("style \"QtcEtch\" "
+                                    "{ xthickness = 3 ythickness = 3 } "
+                                    "style \"QtcEtchI\" "
+                                    "{ GtkCheckButton::indicator_size = 15 } "
+                                    "class \"*GtkRange\" style \"QtcEtch\" "
+                                    "class \"*GtkSpinButton\" style \"QtcEtch\" "
+                                    "class \"*GtkEntry\" style  \"QtcEtch\" "
+                                    "widget_class \"*Toolbar*Entry\" style \"QtcEtch\" "
+                                    "class \"*Button\" style \"QtcEtch\""
+                                    "class \"*GtkOptionMenu\" style \"QtcEtch\""
+                                    /*"class \"*GtkWidget\" style \"QtcEtchI\""*/);
+
+            if(!opts->gtkScrollViews)
+                gtk_rc_parse_string("style \"QtcSV\""
+                                    " { GtkScrolledWindow::scrollbar-spacing = 0 "
+                                      " GtkScrolledWindow::scrollbars-within-bevel = 1 } "
+                                    "class \"*GtkWidget\" style \"QtcSV\"");
+
+            /* Scrolled windows */
+            if(opts->squareScrollViews)
+                thickness=opts->gtkScrollViews ? 1 : 2;
+            else if(opts->sunkenScrollViews)
+                thickness=3;
+
+            { /* C-Scope */
+                static const char *constStrFormat="style \"QtcSVt\" "
+                                                    "{ xthickness = %d ythickness = %d } "
+                                                      "class \"*GtkScrolledWindow\" style \"QtcSVt\"";
+
+                tmpStr=(char *)realloc(tmpStr, strlen(constStrFormat)+1);
+                sprintf(tmpStr, constStrFormat, thickness, thickness);
+                gtk_rc_parse_string(tmpStr);
+            } /* C-Scope */
+
+            { /* C-Scope */
+                static const char *constStrFormat="style \"QtcPbar\" "
+                                                    "{ xthickness = %d ythickness = %d } "
+                                                      "widget_class \"*GtkProgressBar\" style \"QtcPbar\"";
+                int pthickness=opts->fillProgress
+                                ? doEffect
+                                    ? 2
+                                    : 1
+                                : doEffect
+                                    ? 3
+                                    : 2;
+
+                tmpStr=(char *)realloc(tmpStr, strlen(constStrFormat)+1);
+                sprintf(tmpStr, constStrFormat, pthickness, pthickness);
+                gtk_rc_parse_string(tmpStr);
+            } /* C-Scope */
+            } /* C-Scope 'doEffect' */
+
+            if(opts->lighterPopupMenuBgnd && !opts->borderMenuitems)
+                gtk_rc_parse_string("style \"QtCM\" { xthickness=1 ythickness=1 }\n"
+                                    "class \"*GtkMenu\" style \"QtCM\"");
+
             if(tmpStr)
                 free(tmpStr);
         }
