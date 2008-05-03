@@ -8,7 +8,7 @@ set(DEBIAN_PACKAGE_SECTION "gtk")
 set(CPACK_SOURCE_GENERATOR "TBZ2")
 set(CPACK_PACKAGE_VERSION_MAJOR "0")
 set(CPACK_PACKAGE_VERSION_MINOR "59")
-set(CPACK_PACKAGE_VERSION_PATCH "1")
+set(CPACK_PACKAGE_VERSION_PATCH "2")
 set(CPACK_PACKAGE_CONTACT "Craig Drummond <Craig.Drummond@lycos.co.uk>")
 set(QTCURVE_VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}")
 set(QTCURVE_VERSION_FULL "${QTCURVE_VERSION}.${CPACK_PACKAGE_VERSION_PATCH}")
@@ -111,6 +111,15 @@ if (GTK_INCLUDE_DIR)
                 "         re-order the buttons of Gtk dialogs. Note: This will cause\n"
                 "         errors to be printed to the console, and is only an\n"
                 "         experiment!\n"
+                "**************************************************************\n\n\n")
+    endif(QTC_REORDER_GTK_DIALOG_BUTTONS)
+    if(QTC_NEW_MOZILLA)
+        message("\n\n**************************************************************\n"
+                "Information: Defaulting to treating Firefox as Firefox >= 3.0\n"
+                "**************************************************************\n\n\n")
+    else(QTC_NEW_MOZILLA)
+        message("\n\n**************************************************************\n"
+                "Information: Defaulting to treating Firefox as Firefox < 3.0\n"
                 "**************************************************************\n\n\n")
     endif(QTC_REORDER_GTK_DIALOG_BUTTONS)
 else (GTK_INCLUDE_DIR)
