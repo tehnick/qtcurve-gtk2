@@ -108,7 +108,8 @@ typedef enum
     GTK_APP_GIMP,
     GTK_APP_GIMP_PLUGIN,
     GTK_APP_JAVA,
-    GTK_APP_JAVA_SWT
+    GTK_APP_JAVA_SWT,
+    GTK_APP_EVOLUTION
     /*GTK_APP_GAIM*/
 } EGtkApp;
 
@@ -282,21 +283,31 @@ static char * getKdeHome()
     return kdeHome;
 }
 
-static char * themeFile(const char *prefix, const char *name, char **tmpStr)
+static char * themeFileSub(const char *prefix, const char *name, char **tmpStr, const char *sub)
 {
-    *tmpStr=realloc(*tmpStr, strlen(prefix)+1+strlen(QTC_THEME_DIR)+1+strlen(name)+strlen(QTC_THEME_SUFFIX)+1);
+    *tmpStr=realloc(*tmpStr, strlen(prefix)+1+strlen(sub)+1+strlen(name)+strlen(QTC_THEME_SUFFIX)+1);
 
     if(*tmpStr)
     {
         struct stat st;
 
-        sprintf(*tmpStr, "%s/%s/%s%s", prefix, QTC_THEME_DIR, name, QTC_THEME_SUFFIX);
+        sprintf(*tmpStr, "%s/%s/%s%s", prefix, sub, name, QTC_THEME_SUFFIX);
 
         if(0==stat(*tmpStr, &st))
             return *tmpStr;
     }
 
     return NULL;
+}
+
+static char * themeFile(const char *prefix, const char *name, char **tmpStr)
+{
+    char *f=themeFileSub(prefix, name, tmpStr, QTC_THEME_DIR);
+
+    if(!f)
+        f=themeFileSub(prefix, name, tmpStr, QTC_THEME_DIR4);
+
+    return f;
 }
 
 static void parseQtColors(char *line, int p)
@@ -1457,6 +1468,8 @@ static gboolean qtInit(Options *opts)
                     qtSettings.app=GTK_APP_GIMP;
                 else if(0==strcmp(app, "java"))
                     qtSettings.app=GTK_APP_JAVA;
+                else if(0==strcmp(app, "evolution"))
+                    qtSettings.app=GTK_APP_EVOLUTION;
                 /*else if(app==strstr(app, "gaim"))
                     qtSettings.app=GTK_APP_GAIM;*/
             }
