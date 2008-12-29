@@ -168,6 +168,12 @@ struct QtData
 
 struct QtData qtSettings;
 
+static bool haveAlternareListViewCol()
+{
+    return 0!=qtSettings.colors[PAL_ACTIVE][COLOR_LV].red || 0!=qtSettings.colors[PAL_ACTIVE][COLOR_LV].green ||
+           0!=qtSettings.colors[PAL_ACTIVE][COLOR_LV].blue;
+}
+
 static gboolean isMozilla()
 {
     return GTK_APP_MOZILLA==qtSettings.app || GTK_APP_NEW_MOZILLA==qtSettings.app;
@@ -202,6 +208,8 @@ enum
     SECT_TOOLBAR_STYLE,
     SECT_MAIN_TOOLBAR_ICONS,
     SECT_SMALL_ICONS,
+
+    SECT_COLORS_VIEW, // KDE4!
     SECT_QT
 };
 
@@ -371,7 +379,15 @@ static void parseQtColors(char *line, int p)
     }
 }
 
-static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboolean setDefaultFont, gboolean qt4)
+typedef enum 
+{
+    QT3,
+    QT4,
+    KDE3,
+    KDE4
+} FileType;
+
+static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboolean setDefaultFont, FileType ft)
 {
     const char *home=absolute ? NULL : getHome();
     int        found=0,
@@ -389,12 +405,10 @@ static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboo
         char     fname[256];
         FILE     *f;
 
-        if(absolute)
-            strcpy(fname, rc);
-        else
+        if(!absolute)
             sprintf(fname, "%s/%s", home, rc);
 
-        f=fopen(fname, "r");
+        f=fopen(absolute ? rc : fname, "r");
 
         if(f)
         {
@@ -403,7 +417,7 @@ static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboo
             while(found!=rd && NULL!=fgets(line, QTC_MAX_INPUT_LINE_LEN, f))
                 if(line[0]=='[')
                 {
-                    if(qt4)
+                    if(QT4==ft)
                         if(0==strncmp_i(line, "[Qt]", 4))
                             section=SECT_QT;
                         else
@@ -423,6 +437,8 @@ static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboo
                             section=SECT_MAIN_TOOLBAR_ICONS;
                         else if(opts->mapKdeIcons && 0==strncmp_i(line, "[SmallIcons]", 12))
                             section=SECT_SMALL_ICONS;
+                        else if(KDE4==ft && 0==strncmp_i(line, "[Colors:View]", 13))
+                            section=SECT_COLORS_VIEW;
                         else
                             section=SECT_NONE;
                 }
@@ -505,8 +521,8 @@ static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboo
                     }
                 }
                 else if(rd&RD_CONTRAST && !(found&RD_CONTRAST) &&
-                         ( (!qt4 && SECT_KDE==section && 0==strncmp_i(line, "contrast=", 9)) ||
-                           ( qt4 && SECT_QT==section  && 0==strncmp_i(line, "KDE\\contrast=", 13))))
+                         ( (QT3==ft && SECT_KDE==section && 0==strncmp_i(line, "contrast=", 9)) ||
+                           (QT4==ft && SECT_QT==section  && 0==strncmp_i(line, "KDE\\contrast=", 13))))
                 {
                     char *l=strchr(line, '=');
                     l++;
@@ -515,8 +531,9 @@ static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboo
                         opts->contrast=7;
                     found|=RD_CONTRAST;
                 }
-                else if(SECT_GENERAL==section && rd&RD_LIST_COLOR && !(found&RD_LIST_COLOR) &&
-                        0==strncmp_i(line, "alternateBackground=", 20))
+                else if(rd&RD_LIST_COLOR && !(found&RD_LIST_COLOR) &&
+                        ( (KDE3==ft && SECT_GENERAL==section && 0==strncmp_i(line, "alternateBackground=", 20)) ||
+                          (KDE4==ft && SECT_COLORS_VIEW==section && 0==strncmp_i(line, "BackgroundAlternate=", 20)) ) )
                 {
                     sscanf(&line[20], "%d,%d,%d\n", &qtSettings.colors[PAL_ACTIVE][COLOR_LV].red,
                                                     &qtSettings.colors[PAL_ACTIVE][COLOR_LV].green,
@@ -538,21 +555,21 @@ static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboo
                         found|=RD_LIST_SHADE;
                     }
                 }
-                else if(( (!qt4 && SECT_PALETTE==section) || (qt4 && SECT_QT==section)) && rd&RD_ACT_PALETTE && !(found&RD_ACT_PALETTE) &&
-                        (qt4 ? 0==strncmp_i(line, "Palette\\active=", 15) : 0==strncmp_i(line, "active=", 7)))
+                else if(( (QT3==ft && SECT_PALETTE==section) || (QT4==ft && SECT_QT==section)) && rd&RD_ACT_PALETTE && !(found&RD_ACT_PALETTE) &&
+                          (QT4==ft ? 0==strncmp_i(line, "Palette\\active=", 15) : 0==strncmp_i(line, "active=", 7)))
                 {
                     parseQtColors(line, PAL_ACTIVE);
                     found|=RD_ACT_PALETTE;
                 }
 #ifdef QTC_READ_INACTIVE_PAL
-                else if(( (!qt4 && SECT_PALETTE==section) || (qt4 && SECT_QT==section)) && rd&RD_INACT_PALETTE && !(found&RD_INACT_PALETTE) &&
-                        (qt4 ? 0==strncmp_i(line, "Palette\\inactive=", 17) : 0==strncmp_i(line, "inactive=", 9)))
+                else if(( (QT3==ft && SECT_PALETTE==section) || (QT4==ft && SECT_QT==section)) && rd&RD_INACT_PALETTE && !(found&RD_INACT_PALETTE) &&
+                          (QT4==ft ? 0==strncmp_i(line, "Palette\\inactive=", 17) : 0==strncmp_i(line, "inactive=", 9)))
                 {
                     parseQtColors(line, PAL_INACTIVE);
                     found|=RD_INACT_PALETTE;
                 }
 #endif
-                else if (((!qt4 && SECT_GENERAL==section) || (qt4 && SECT_QT==section)) &&
+                else if (((QT3==ft && SECT_GENERAL==section) || (QT4==ft && SECT_QT==section)) &&
                          rd&RD_STYLE && !(found&RD_STYLE)&& 0==strncmp_i(line, "style=", 6))
 
                 {
@@ -563,9 +580,9 @@ static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboo
                     strcpy(qtSettings.styleName, &line[6]);
                     found|=RD_STYLE;
                 }
-                else if (( !qt4 && SECT_GENERAL==section && rd&RD_FONT && !(found&RD_FONT) &&
+                else if (( QT3==ft && SECT_GENERAL==section && rd&RD_FONT && !(found&RD_FONT) &&
                             0==strncmp_i(line, "font=", 5)) ||
-                         ( qt4 && SECT_QT==section && rd&RD_FONT && !(found&RD_FONT) &&
+                         ( QT4==ft && SECT_QT==section && rd&RD_FONT && !(found&RD_FONT) &&
                             0==strncmp_i(line, "font=\"", 6)) )
                 {
                     int   n=-1,
@@ -577,7 +594,7 @@ static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboo
                           *rc_family=NULL,
                           *rc_foundry=NULL;
 
-                    if(qt4) /* Convert Qt4's font= syntax to Qt3 style... */
+                    if(QT4==ft) /* Convert Qt4's font= syntax to Qt3 style... */
                     {
                         int len=strlen(line),
                             i;
@@ -753,14 +770,18 @@ static int qt_refs=0;
 #include <stdio.h>
 #include <dirent.h>
 
+#define KDE_CFG_DIR         "/share/config/"
+#define KDEGLOBALS_FILE     KDE_CFG_DIR"kdeglobals"
+#define KDEGLOBALS_SYS_FILE KDE_CFG_DIR"system.kdeglobals"
+
 static const char * kdeGlobals()
 {
     static char kg[QTC_MAX_FILENAME_LEN+1]={'\0'};
 
     char *kdehome=getKdeHome();
 
-    if(kdehome && strlen(kdehome)<(QTC_MAX_FILENAME_LEN-strlen("/share/config/kdeglobals")))
-        sprintf(kg, "%s/share/config/kdeglobals", kdehome);
+    if(kdehome && strlen(kdehome)<(QTC_MAX_FILENAME_LEN-strlen(KDEGLOBALS_FILE)))
+        sprintf(kg, "%s"KDEGLOBALS_FILE, kdehome);
 
     return kg;
 }
@@ -1390,11 +1411,11 @@ static gboolean qtInit(Options *opts)
             {
                 qtSettings.qt4=FALSE;
                 readRc("/etc/qt/qtrc", RD_ACT_PALETTE|(opts->inactiveHighlight ? 0 : RD_INACT_PALETTE)|RD_FONT|RD_CONTRAST|RD_STYLE,
-                       opts, TRUE, FALSE, FALSE);
+                       opts, TRUE, FALSE, QT3);
                 readRc("/etc/qt3/qtrc", RD_ACT_PALETTE|(opts->inactiveHighlight ? 0 : RD_INACT_PALETTE)|RD_FONT|RD_CONTRAST|RD_STYLE,
-                       opts, TRUE, FALSE, FALSE);
+                       opts, TRUE, FALSE, QT3);
                 readRc(".qt/qtrc", RD_ACT_PALETTE|(opts->inactiveHighlight ? 0 : RD_INACT_PALETTE)|RD_FONT|RD_CONTRAST|RD_STYLE,
-                       opts, FALSE, TRUE, FALSE);
+                       opts, FALSE, TRUE, QT3);
             }
             else
             {
@@ -1403,10 +1424,10 @@ static gboolean qtInit(Options *opts)
                 char *confFile=(char *)malloc(strlen(xdg)+strlen(QT4_CFG_FILE)+2);
 
                 readRc("/etc/xdg/"QT4_CFG_FILE, RD_ACT_PALETTE|(opts->inactiveHighlight ? 0 : RD_INACT_PALETTE)|RD_FONT|RD_CONTRAST|RD_STYLE,
-                       opts, TRUE, FALSE, TRUE);
+                       opts, TRUE, FALSE, QT4);
                 sprintf(confFile, "%s/"QT4_CFG_FILE, xdg);
                 readRc(confFile, RD_ACT_PALETTE|(opts->inactiveHighlight ? 0 : RD_INACT_PALETTE)|RD_FONT|RD_CONTRAST|RD_STYLE,
-                       opts, TRUE, TRUE, TRUE);
+                       opts, TRUE, TRUE, QT4);
                 free(confFile);
                 qtSettings.qt4=TRUE;
             }
@@ -1418,7 +1439,7 @@ static gboolean qtInit(Options *opts)
             {
                 const char *env=getenv("QTC_STYLE");
 
-                if(env)
+                if(env && strlen(env))
                 {
                     qtSettings.styleName=realloc(qtSettings.styleName, strlen(env));
                     strcpy(qtSettings.styleName, env);
@@ -1477,11 +1498,12 @@ static gboolean qtInit(Options *opts)
                     else if(mozThunderbird)
                         processMozillaApp(!opts->gtkButtonOrder, add_menu_colors, "mozilla-thunderbird", FALSE);
 #endif
-                    qtSettings.app= (firefox && opts->newFirefox) ||
-                                    ((thunderbird || mozThunderbird) && opts->newThunderbird) ||
-                                    NULL!=getenv("QTC_NEW_MOZILLA")
-                                        ? GTK_APP_NEW_MOZILLA
-                                        : GTK_APP_MOZILLA;
+                    qtSettings.app=
+#ifndef QTC_OLD_MOZILLA
+                        firefox || NULL!=getenv("QTC_NEW_MOZILLA")
+                                    ? GTK_APP_NEW_MOZILLA :
+#endif
+                                    GTK_APP_MOZILLA;
                 }
                 else if(0==strcmp(app, "soffice.bin"))
                     qtSettings.app=GTK_APP_OPEN_OFFICE;
@@ -1579,13 +1601,26 @@ static gboolean qtInit(Options *opts)
             if(GTK_APP_VMPLAYER==qtSettings.app)
                 opts->shadeMenubars=SHADE_NONE;
 
-            readRc(kdeGlobals(),
-                   (opts->mapKdeIcons ? RD_ICONS|RD_SMALL_ICON_SIZE : 0)|RD_TOOLBAR_STYLE|RD_TOOLBAR_ICON_SIZE|RD_BUTTON_ICONS|RD_LIST_COLOR|RD_LIST_SHADE,
-                    opts, TRUE, FALSE, FALSE);
+            {
+            int        f=0;
+            const char *files[]={"/etc/kderc",
+                                 qtSettings.qt4 ? "/etc/kde4/kdeglobals" : "/etc/kde3/kdeglobals",
+                                 qtSettings.qt4 ? "/etc/kde4rc" : "/etc/kde3rc",
+                                 qtSettings.qt4 ? KDE4PREFIX KDEGLOBALS_FILE : KDE3PREFIX KDEGLOBALS_FILE,
+                                 qtSettings.qt4 ? KDE4PREFIX KDEGLOBALS_SYS_FILE : KDE3PREFIX KDEGLOBALS_SYS_FILE,
+                                 kdeGlobals(),
+                                 0L};
+
+            for(f=0; 0!=files[f]; ++f)
+                readRc(files[f],
+                       (opts->mapKdeIcons ? RD_ICONS|RD_SMALL_ICON_SIZE : 0)|RD_TOOLBAR_STYLE|RD_TOOLBAR_ICON_SIZE|
+                        RD_BUTTON_ICONS|RD_LIST_COLOR|RD_LIST_SHADE,
+                        opts, TRUE, FALSE, qtSettings.qt4 ? KDE4 : KDE3);
+            }
 
             /* Tear off menu items dont seem to draw they're background, and the default background
                is drawn :-(  Fix/hack this by making that background the correct color */
-            if(opts->lighterPopupMenuBgnd)
+            if(opts->lighterPopupMenuBgnd>1)
             {
                 static const char *format="style \"QtCLMnu\" "
                                           "{bg[NORMAL]=\"#%02X%02X%02X\"} "
@@ -1596,7 +1631,7 @@ static gboolean qtInit(Options *opts)
                 {
                     GdkColor col;
 
-                    shade(&qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW], &col, POPUPMENU_LIGHT_FACTOR);
+                    shade(&qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW], &col, opts->lighterPopupMenuBgnd);
                     sprintf(tmpStr, format, toQtColor(col.red), toQtColor(col.green), toQtColor(col.blue));
                     gtk_rc_parse_string(tmpStr);
                 }
@@ -1692,7 +1727,8 @@ static gboolean qtInit(Options *opts)
 
             if(SLIDER_TRIANGULAR==opts->sliderStyle)
                 gtk_rc_parse_string("style \"QtCSldr\" {GtkScale::slider_length = 11 GtkScale::slider_width = 18} class \"*\" style \"QtCSldr\"");
-
+            else if(SLIDER_PLAIN_ROTATED==opts->sliderStyle || SLIDER_ROUND_ROTATED==opts->sliderStyle)
+                gtk_rc_parse_string("style \"QtCSldr\" {GtkScale::slider_length = 13 GtkScale::slider_width = 21} class \"*\" style \"QtCSldr\"");
             if(qtSettings.boldfont)
             {
                 static const char *constBoldPrefix="style \"QtCBFnt\"{font_name=\"";
@@ -1804,7 +1840,7 @@ static gboolean qtInit(Options *opts)
                 opts->gtkScrollViews=true;
 
             { /* C-Scope */
-            bool doEffect=ROUND_FULL==opts->round && EFFECT_NONE!=opts->buttonEffect;
+            bool doEffect=opts->round>=ROUND_FULL && EFFECT_NONE!=opts->buttonEffect;
             int  thickness=2;
 
             if(doEffect)
@@ -1848,11 +1884,11 @@ static gboolean qtInit(Options *opts)
                                                       "widget_class \"*GtkProgressBar\" style \"QtcPbar\"";
                 int pthickness=opts->fillProgress
                                 ? doEffect
-                                    ? 2
-                                    : 1
+                                    ? 1
+                                    : 0
                                 : doEffect
-                                    ? 3
-                                    : 2;
+                                    ? 2
+                                    : 1;
 
                 tmpStr=(char *)realloc(tmpStr, strlen(constStrFormat)+1);
                 sprintf(tmpStr, constStrFormat, pthickness, pthickness);
@@ -1877,7 +1913,7 @@ static gboolean qtInit(Options *opts)
                 gtk_rc_parse_string(tmpStr);
             } /* C-Scope */
 
-            if(ROUND_FULL==opts->round && EFFECT_NONE!=opts->buttonEffect)
+            if(opts->round>=ROUND_FULL && EFFECT_NONE!=opts->buttonEffect)
                 gtk_rc_parse_string("style \"QtCSwt\" { xthickness = 3 ythickness = 2 }"
                                     "widget_class \"*.SwtFixed.GtkCombo.GtkButton\" style \"QtCSwt\""
                                     "widget_class \"*.SwtFixed.GtkCombo.GtkEntry\" style \"QtCSwt\"");
@@ -1885,6 +1921,46 @@ static gboolean qtInit(Options *opts)
             if(opts->lighterPopupMenuBgnd && !opts->borderMenuitems)
                 gtk_rc_parse_string("style \"QtCM\" { xthickness=1 ythickness=1 }\n"
                                     "class \"*GtkMenu\" style \"QtCM\"");
+
+            { /* C-Scope */
+                static const char *constStrFormat="style \"QtcTree\" "
+                                                    "{ GtkTreeView::odd-row-color = \"#%02X%02X%02X\" GtkTreeView::even-row-color = \"#%02X%02X%02X\"} "
+                                                    "widget \"*GtkTreeView*\" style \"QtcTree\"";
+                int alt=haveAlternareListViewCol() ? COLOR_LV : COLOR_BACKGROUND;
+
+                tmpStr=(char *)realloc(tmpStr, strlen(constStrFormat)+1);
+                sprintf(tmpStr, constStrFormat,
+                        toQtColor(qtSettings.colors[PAL_ACTIVE][alt].red),
+                        toQtColor(qtSettings.colors[PAL_ACTIVE][alt].green),
+                        toQtColor(qtSettings.colors[PAL_ACTIVE][alt].blue),
+                        toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_BACKGROUND].red),
+                        toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_BACKGROUND].green),
+                        toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_BACKGROUND].blue));
+                gtk_rc_parse_string(tmpStr);
+            } /* C-Scope */
+
+            if(!opts->useHighlightForMenu)
+            {
+                static const char *constStrFormat="style \"QtcMnu\" "
+                                                  "{ text[ACTIVE] = \"#%02X%02X%02X\" "
+                                                  " text[SELECTED] = \"#%02X%02X%02X\" } "
+                                                  " class \"*MenuItem\" style \"QtcMnu\""
+                                                  " widget_class \"*MenuBar*MenuItem\" style \"QtcMnu\""
+                                                  " widget_class \"*.GtkAccelMenuItem\" style \"QtcMnu\""
+                                                  " widget_class \"*.GtkRadioMenuItem\" style \"QtcMnu\""
+                                                  " widget_class \"*.GtkCheckMenuItem\" style \"QtcMnu\""
+                                                  " widget_class \"*.GtkImageMenuItem\" style \"QtcMnu\"";
+
+                tmpStr=(char *)realloc(tmpStr, strlen(constStrFormat)+1);
+                sprintf(tmpStr, constStrFormat,
+                        toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TEXT].red),
+                        toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TEXT].green),
+                        toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TEXT].blue),
+                        toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TEXT].red),
+                        toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TEXT].green),
+                        toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TEXT].blue));
+                gtk_rc_parse_string(tmpStr);
+            }
 
             if(tmpStr)
                 free(tmpStr);

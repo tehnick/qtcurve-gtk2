@@ -7,8 +7,8 @@ set(DEBIAN_PACKAGE_DESCRIPTION "QtCurve for Gtk2")
 set(DEBIAN_PACKAGE_SECTION "gtk")
 set(CPACK_SOURCE_GENERATOR "TBZ2")
 set(CPACK_PACKAGE_VERSION_MAJOR "0")
-set(CPACK_PACKAGE_VERSION_MINOR "59")
-set(CPACK_PACKAGE_VERSION_PATCH "7")
+set(CPACK_PACKAGE_VERSION_MINOR "60")
+set(CPACK_PACKAGE_VERSION_PATCH "0")
 set(CPACK_PACKAGE_CONTACT "Craig Drummond <Craig.Drummond@lycos.co.uk>")
 set(QTCURVE_VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}")
 set(QTCURVE_VERSION_FULL "${QTCURVE_VERSION}.${CPACK_PACKAGE_VERSION_PATCH}")
@@ -106,15 +106,15 @@ if (GTK_INCLUDE_DIR)
                 "         experiment!\n"
                 "**************************************************************\n\n\n")
     endif(QTC_REORDER_GTK_DIALOG_BUTTONS)
-    if(QTC_NEW_MOZILLA)
-        message("\n\n**************************************************************\n"
-                "Information: Defaulting to treating Firefox as Firefox >= 3.0\n"
-                "**************************************************************\n\n\n")
-    else(QTC_NEW_MOZILLA)
+    if(QTC_OLD_MOZILLA)
         message("\n\n**************************************************************\n"
                 "Information: Defaulting to treating Firefox as Firefox < 3.0\n"
                 "**************************************************************\n\n\n")
-    endif(QTC_NEW_MOZILLA)
+    else(QTC_OLD_MOZILLA)
+        message("\n\n**************************************************************\n"
+                "Information: Defaulting to treating Firefox as Firefox >= 3.0\n"
+                "**************************************************************\n\n\n")
+    endif(QTC_OLD_MOZILLA)
 else (GTK_INCLUDE_DIR)
     message(FATAL_ERROR "Could not locate Gtk2 include files")
 endif (GTK_INCLUDE_DIR)

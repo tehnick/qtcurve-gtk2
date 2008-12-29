@@ -1,3 +1,36 @@
+0.60
+----
+ 1. Fix "trough-lower" and "tough-upper" style slider troughs.
+ 2. Fix reading of listview colours under KDE4.
+ 3. If appearance is rounded, round view selections.
+ 4. New focus rect options - standard, highlight, background, filled.
+ 5. Add the ability to specify popup menu light factor.
+ 6. Put more space between arrows on combos if using V arrows.
+ 7. Add option to use darkened background colour for menuitem selection.
+ 8. Add 'fade' to menuitem appearance.
+ 9. Option to have flat scrollbar buttons.
+10. New slider styles - plain rotated, and round rotated.
+11. Fix crash if QTC_STYLE is set, but is empty.
+12. Alter the way the light part of etchibng is drawn - should help with darker color schemes.
+13. Draw border around filled progress.
+14. Fix light spinbuttons on dark background.
+15. Option to have button-like checks/radios.
+16. Draw square border for for frames that pass no detail and no widget to
+    gtkDrawShadow.
+17. Use base for light part of lineedit border, and background for scrollview.
+18. Default to treating Firefox as firefox>2.0 - cmake with -DQTC_OLD_MOZILLA=true
+    to revert.
+19. Draw statusbar frames, if enabled.
+20. Nicer 'V' arrows.
+21. When reading KDE settings, read (if they exist):
+        /etc/kderc
+        /etc/kde4rc or /etc/kde3rc
+        /etc/kde4/kdeglobals or /etc/kde3/kdeglobals
+        <KDE4 prefix>/usr/share/config/kdeglobals or <KDE3 prefix>/usr/share/config/kdeglobals
+        <KDE4 prefix>/usr/share/config/system.kdeglobals or <KDE3 prefix>/usr/share/config/system.kdeglobals
+        $KDEHOME/share/config/kdeglobals
+22. Round internal corners of plain colored mouse over effect.
+
 0.59.7
 ------
 1. Read tooltip colours from qt config file.
