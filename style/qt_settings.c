@@ -1,5 +1,5 @@
 /*
-  QtCurve (C) Craig Drummond, 2003 - 2007 Craig.Drummond@lycos.co.uk
+  QtCurve (C) Craig Drummond, 2003 - 2009 craig_p_drummond@yahoo.co.uk
 
   ----
 
@@ -32,7 +32,7 @@
 #include <stdio.h>
 
 #define QTC_READ_INACTIVE_PAL /* Control whether QtCurve should read the inactive palette as well.. */
-#define QTC_DEFAULT_TO_KDE3   /* Should we default to KDE3, or KDE4 settings when not running under KDE? */
+#define QTC_RC_SETTING "QtC__"
 
 #define toQtColor(col) \
     col>>8
@@ -189,7 +189,7 @@ static gboolean useQt3Settings()
 #ifdef QTC_DEFAULT_TO_KDE3
     return !vers || atoi(vers)<4;
 #else
-    return vers && atoi(vers)<4);
+    return vers && atoi(vers)<4;
 #endif
 }
 
@@ -322,14 +322,14 @@ static char * themeFile(const char *prefix, const char *name, char **tmpStr)
     return f;
 }
 
-static void parseQtColors(char *line, int p)
+static void parseQtColors(char *line, int p, gboolean readToolTip)
 {
     int  n=-1;
     char *l=strtok(line, "#");
 
     while(l)
     {
-        if(8==strlen(l))
+        if(strlen(l)>=7)
             switch(n)
             {
                 case 0:
@@ -368,12 +368,11 @@ static void parseQtColors(char *line, int p)
                 default:
                     break;
             }
-        else
-            if(n>-1)
-                break;
+        else if(n>-1)
+            break;
 
         n++;
-        if(n>13)
+        if(n>(readToolTip ? 19 : 13))
             break;
         l=strtok(NULL, "#");
     }
@@ -481,7 +480,9 @@ static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboo
                     }
                 }
                 else if (SECT_TOOLBAR_STYLE==section && rd&RD_TOOLBAR_STYLE &&
-                         !(found&RD_TOOLBAR_STYLE) && 0==strncmp_i(line, "IconText=", 9))
+                         !(found&RD_TOOLBAR_STYLE) &&
+                         ( (KDE3==ft && 0==strncmp_i(line, "IconText=", 9)) ||
+                           (KDE4==ft && 0==strncmp_i(line, "ToolButtonStyle=", 16))))
                 {
                     char *eq=strstr(line, "=");
 
@@ -491,9 +492,11 @@ static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboo
                             qtSettings.toolbarStyle=GTK_TOOLBAR_ICONS;
                         else if(0==strncmp_i(eq, "TextOnly", 8))
                             qtSettings.toolbarStyle=GTK_TOOLBAR_TEXT;
-                        else if(0==strncmp_i(eq, "IconTextRight", 13))
+                        else if( (KDE3==ft && 0==strncmp_i(eq, "IconTextRight", 13)) ||
+                                 (KDE4==ft && 0==strncmp_i(eq, "TextBesideIcon", 14)) )
                             qtSettings.toolbarStyle=GTK_TOOLBAR_BOTH_HORIZ;
-                        else if(0==strncmp_i(eq, "IconTextBottom", 14))
+                        else if( (KDE3==ft && 0==strncmp_i(eq, "IconTextBottom", 14)) ||
+                                 (KDE4==ft && 0==strncmp_i(eq, "TextUnderIcon", 13)))
                             qtSettings.toolbarStyle=GTK_TOOLBAR_BOTH;
                         found|=RD_TOOLBAR_STYLE;
                     }
@@ -558,14 +561,14 @@ static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboo
                 else if(( (QT3==ft && SECT_PALETTE==section) || (QT4==ft && SECT_QT==section)) && rd&RD_ACT_PALETTE && !(found&RD_ACT_PALETTE) &&
                           (QT4==ft ? 0==strncmp_i(line, "Palette\\active=", 15) : 0==strncmp_i(line, "active=", 7)))
                 {
-                    parseQtColors(line, PAL_ACTIVE);
+                    parseQtColors(line, PAL_ACTIVE, QT4==ft);
                     found|=RD_ACT_PALETTE;
                 }
 #ifdef QTC_READ_INACTIVE_PAL
                 else if(( (QT3==ft && SECT_PALETTE==section) || (QT4==ft && SECT_QT==section)) && rd&RD_INACT_PALETTE && !(found&RD_INACT_PALETTE) &&
                           (QT4==ft ? 0==strncmp_i(line, "Palette\\inactive=", 17) : 0==strncmp_i(line, "inactive=", 9)))
                 {
-                    parseQtColors(line, PAL_INACTIVE);
+                    parseQtColors(line, PAL_INACTIVE, QT4==ft);
                     found|=RD_INACT_PALETTE;
                 }
 #endif
@@ -689,7 +692,7 @@ static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboo
     {
         strncpy(line, DEFAULT_KDE_ACT_PAL, QTC_MAX_INPUT_LINE_LEN);
         line[QTC_MAX_INPUT_LINE_LEN]='\0';
-        parseQtColors(line, PAL_ACTIVE);
+        parseQtColors(line, PAL_ACTIVE, false);
     }
 
 #ifdef QTC_READ_INACTIVE_PAL
@@ -697,7 +700,7 @@ static int readRc(const char *rc, int rd, Options *opts, gboolean absolute, gboo
     {
         strncpy(line, DEFAULT_KDE_INACT_PAL, QTC_MAX_INPUT_LINE_LEN);
         line[QTC_MAX_INPUT_LINE_LEN]='\0';
-        parseQtColors(line, PAL_INACTIVE);
+        parseQtColors(line, PAL_INACTIVE, false);
     }
 #endif
 
@@ -1398,23 +1401,21 @@ static gboolean qtInit(Options *opts)
             qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP_TEXT].red=
                 qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP_TEXT].green=
                 qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP_TEXT].blue=0;
-            qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP_TEXT].red=0xFFFF;
-            qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP_TEXT].green=0xFFFF;
-            qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP_TEXT].blue=toGtkColor(192);
+            qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP].red=0xFFFF;
+            qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP].green=0xFFFF;
+            qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP].blue=toGtkColor(192);
             qtSettings.styleName=NULL;
 
             lastRead=now;
 
-            defaultSettings(opts);
-
             if(useQt3Settings())
             {
                 qtSettings.qt4=FALSE;
-                readRc("/etc/qt/qtrc", RD_ACT_PALETTE|(opts->inactiveHighlight ? 0 : RD_INACT_PALETTE)|RD_FONT|RD_CONTRAST|RD_STYLE,
+                readRc("/etc/qt/qtrc", RD_ACT_PALETTE|RD_INACT_PALETTE|RD_FONT|RD_CONTRAST|RD_STYLE,
                        opts, TRUE, FALSE, QT3);
-                readRc("/etc/qt3/qtrc", RD_ACT_PALETTE|(opts->inactiveHighlight ? 0 : RD_INACT_PALETTE)|RD_FONT|RD_CONTRAST|RD_STYLE,
+                readRc("/etc/qt3/qtrc", RD_ACT_PALETTE|RD_INACT_PALETTE|RD_FONT|RD_CONTRAST|RD_STYLE,
                        opts, TRUE, FALSE, QT3);
-                readRc(".qt/qtrc", RD_ACT_PALETTE|(opts->inactiveHighlight ? 0 : RD_INACT_PALETTE)|RD_FONT|RD_CONTRAST|RD_STYLE,
+                readRc(".qt/qtrc", RD_ACT_PALETTE|RD_INACT_PALETTE|RD_FONT|RD_CONTRAST|RD_STYLE,
                        opts, FALSE, TRUE, QT3);
             }
             else
@@ -1423,10 +1424,10 @@ static gboolean qtInit(Options *opts)
 
                 char *confFile=(char *)malloc(strlen(xdg)+strlen(QT4_CFG_FILE)+2);
 
-                readRc("/etc/xdg/"QT4_CFG_FILE, RD_ACT_PALETTE|(opts->inactiveHighlight ? 0 : RD_INACT_PALETTE)|RD_FONT|RD_CONTRAST|RD_STYLE,
+                readRc("/etc/xdg/"QT4_CFG_FILE, RD_ACT_PALETTE|RD_INACT_PALETTE|RD_FONT|RD_CONTRAST|RD_STYLE,
                        opts, TRUE, FALSE, QT4);
                 sprintf(confFile, "%s/"QT4_CFG_FILE, xdg);
-                readRc(confFile, RD_ACT_PALETTE|(opts->inactiveHighlight ? 0 : RD_INACT_PALETTE)|RD_FONT|RD_CONTRAST|RD_STYLE,
+                readRc(confFile, RD_ACT_PALETTE|RD_INACT_PALETTE|RD_FONT|RD_CONTRAST|RD_STYLE,
                        opts, TRUE, TRUE, QT4);
                 free(confFile);
                 qtSettings.qt4=TRUE;
@@ -1462,7 +1463,7 @@ static gboolean qtInit(Options *opts)
                 }
             }
 
-            readConfig(rcFile, opts, opts);
+            readConfig(rcFile, opts, 0L);
 
             if(opts->inactiveHighlight)
                 generateMidColor(&(qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW]),
@@ -1532,7 +1533,7 @@ static gboolean qtInit(Options *opts)
             {
                 /* KDE's "apply colors to non-KDE apps" messes up firefox, (and progress bar text) so need to fix this! */
                 /* ...and inactive highlight!!! */
-                static const int constFileVersion=2;
+                static const int constFileVersion=3;
                 static const int constVersionLen=1+2+(6*3)+1+1;
 
                 FILE     *f=NULL;
@@ -1564,11 +1565,11 @@ static gboolean qtInit(Options *opts)
                     fprintf(f, "%s\n"
                                 "# Fix for KDE's \"apply colors to non-KDE"
                                 " apps\" setting\n"
-                                "style \"QtCTxtFix\" "
+                                "style \""QTC_RC_SETTING"TxtFix\" "
                                 "{fg[ACTIVE]=\"#%02X%02X%02X\""
                                 " fg[PRELIGHT]=\"#%02X%02X%02X\"}"
-                                "class \"*MenuItem\" style \"QtCTxtFix\" "
-                                "widget_class \"*.*ProgressBar\" style \"QtCTxtFix\"",
+                                "class \"*MenuItem\" style \""QTC_RC_SETTING"TxtFix\" "
+                                "widget_class \"*.*ProgressBar\" style \""QTC_RC_SETTING"TxtFix\"",
                                 version,
                                 toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TEXT_SELECTED].red),
                                 toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TEXT_SELECTED].green),
@@ -1579,10 +1580,10 @@ static gboolean qtInit(Options *opts)
                                 toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TEXT_SELECTED].blue));
 
                     if(opts->inactiveHighlight)
-                        fprintf(f, "style \"QtCHlFix\" "
+                        fprintf(f, "style \""QTC_RC_SETTING"HlFix\" "
                                     "{base[ACTIVE]=\"#%02X%02X%02X\""
                                     " text[ACTIVE]=\"#%02X%02X%02X\"}"
-                                    "class \"*\" style \"QtCHlFix\"",
+                                    "class \"*\" style \""QTC_RC_SETTING"HlFix\"",
 
                                     toQtColor(qtSettings.inactiveSelectCol.red),
                                     toQtColor(qtSettings.inactiveSelectCol.green),
@@ -1622,16 +1623,16 @@ static gboolean qtInit(Options *opts)
                is drawn :-(  Fix/hack this by making that background the correct color */
             if(opts->lighterPopupMenuBgnd>1)
             {
-                static const char *format="style \"QtCLMnu\" "
+                static const char *format="style \""QTC_RC_SETTING"Mnu\" "
                                           "{bg[NORMAL]=\"#%02X%02X%02X\"} "
-                                          "class \"GtkMenu\" style \"QtCLMnu\"";
+                                          "class \"GtkMenu\" style \""QTC_RC_SETTING"Mnu\"";
                 tmpStr=(char *)realloc(tmpStr, strlen(format)+32);
 
                 if(tmpStr)
                 {
                     GdkColor col;
 
-                    shade(&qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW], &col, opts->lighterPopupMenuBgnd);
+                    shade(&qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW], &col, QTC_TO_FACTOR(opts->lighterPopupMenuBgnd));
                     sprintf(tmpStr, format, toQtColor(col.red), toQtColor(col.green), toQtColor(col.blue));
                     gtk_rc_parse_string(tmpStr);
                 }
@@ -1643,7 +1644,7 @@ static gboolean qtInit(Options *opts)
                 char *version=(char *)malloc(versionLen);
 
                 getGtk2CfgFile(&tmpStr, xdg, "qtcurve.gtk-icons");
-                sprintf(version, "#%s %02X%02X%02X%02X%02X%02X%02X%",
+                sprintf(version, "#%s %02X%02X%02X%02X%02X%02X%02X",
                                  VERSION, 
                                  qtSettings.qt4 ? 4 : 3,
                                  qtSettings.iconSizes.smlTbSize,
@@ -1688,7 +1689,7 @@ static gboolean qtInit(Options *opts)
                 GtkSettingsValue svalue;
 
                 if(qtSettings.font)
-                    g_object_set(settings, "gtk-font-name", qtSettings.font, 0);
+                    g_object_set(settings, "gtk-font-name", qtSettings.font, NULL);
 
                 svalue.origin="KDE-Settings";
                 svalue.value.g_type=G_TYPE_INVALID;
@@ -1708,15 +1709,15 @@ static gboolean qtInit(Options *opts)
 
 #if 0
                     if(opts->drawStatusBarFrames)
-                        gtk_rc_parse_string("style \"QtCStBar\""
+                        gtk_rc_parse_string("style \""QTC_RC_SETTING"StBar\""
                                             "{ GtkStatusbar::shadow-type = 1 }" /*GtkStatusbar::has-resize-grip = FALSE }" */
                                             "class \"GtkStatusbar\" style"
-                                            " \"QtCStBar\"");
+                                            " \""QTC_RC_SETTING"StBar\"");
                     else
-                        gtk_rc_parse_string("style \"QtCSBar\""
+                        gtk_rc_parse_string("style \""QTC_RC_SETTING"SBar\""
                                             "{ GtkStatusbar::shadow-type = 0 }" /*GtkStatusbar::has-resize-grip = FALSE }" */
                                             "class \"GtkStatusbar\" style"
-                                            " \"QtCSBar\"");
+                                            " \""QTC_RC_SETTING"SBar\"");
 #endif
                 }
 
@@ -1726,20 +1727,20 @@ static gboolean qtInit(Options *opts)
             }
 
             if(SLIDER_TRIANGULAR==opts->sliderStyle)
-                gtk_rc_parse_string("style \"QtCSldr\" {GtkScale::slider_length = 11 GtkScale::slider_width = 18} class \"*\" style \"QtCSldr\"");
+                gtk_rc_parse_string("style \""QTC_RC_SETTING"Sldr\" {GtkScale::slider_length = 11 GtkScale::slider_width = 18} class \"*\" style \""QTC_RC_SETTING"Sldr\"");
             else if(SLIDER_PLAIN_ROTATED==opts->sliderStyle || SLIDER_ROUND_ROTATED==opts->sliderStyle)
-                gtk_rc_parse_string("style \"QtCSldr\" {GtkScale::slider_length = 13 GtkScale::slider_width = 21} class \"*\" style \"QtCSldr\"");
+                gtk_rc_parse_string("style \""QTC_RC_SETTING"Sldr\" {GtkScale::slider_length = 13 GtkScale::slider_width = 21} class \"*\" style \""QTC_RC_SETTING"Sldr\"");
             if(qtSettings.boldfont)
             {
-                static const char *constBoldPrefix="style \"QtCBFnt\"{font_name=\"";
-                static const char *constBoldSuffix="\"} class \"GtkProgress\" style \"QtCBFnt\" ";
+                static const char *constBoldPrefix="style \""QTC_RC_SETTING"BFnt\"{font_name=\"";
+                static const char *constBoldSuffix="\"} class \"GtkProgress\" style \""QTC_RC_SETTING"BFnt\" ";
 
                 if(opts->framelessGroupBoxes)
                 {
-                    static const char *constStdPrefix="style \"QtCFnt\"{font_name=\"";
+                    static const char *constStdPrefix="style \""QTC_RC_SETTING"Fnt\"{font_name=\"";
                     static const char *constStdSuffix="\"} ";
-                    static const char *constGrpBoxBoldSuffix="widget_class \"*Frame.GtkLabel\" style \"QtCBFnt\" "
-                                                             "widget_class \"*Statusbar.*Frame.GtkLabel\" style \"QtCFnt\"";
+                    static const char *constGrpBoxBoldSuffix="widget_class \"*Frame.GtkLabel\" style \""QTC_RC_SETTING"BFnt\" "
+                                                             "widget_class \"*Statusbar.*Frame.GtkLabel\" style \""QTC_RC_SETTING"Fnt\"";
                     tmpStr=(char *)realloc(tmpStr, strlen(constStdPrefix)+strlen(qtSettings.font)+strlen(constStdSuffix)+
                                                    strlen(constBoldPrefix)+strlen(qtSettings.boldfont)+strlen(constBoldSuffix)+
                                                    strlen(constGrpBoxBoldSuffix)+1);
@@ -1759,8 +1760,8 @@ static gboolean qtInit(Options *opts)
             }
 
             if(opts->thinnerMenuItems)
-                gtk_rc_parse_string("style \"QtCMi\" {xthickness = 1 ythickness = 2 } "
-                                    "class \"*MenuItem\" style \"QtCMi\"");
+                gtk_rc_parse_string("style \""QTC_RC_SETTING"Mi\" {xthickness = 1 ythickness = 2 } "
+                                    "class \"*MenuItem\" style \""QTC_RC_SETTING"Mi\"");
 
             /* Set password character... */
 /*
@@ -1774,18 +1775,18 @@ static gboolean qtInit(Options *opts)
 */
             /* For some reason Firefox 3beta4 goes mad if GtkComboBoxEntry::appears-as-list = 1 !!!! */
             if(isMozilla())
-                gtk_rc_parse_string("style \"QtcMz\" { GtkComboBoxEntry::appears-as-list = 0 } class \"*\" style \"QtcMz\"");
+                gtk_rc_parse_string("style \""QTC_RC_SETTING"Mz\" { GtkComboBoxEntry::appears-as-list = 0 } class \"*\" style \""QTC_RC_SETTING"Mz\"");
 
             if(GTK_APP_MOZILLA==qtSettings.app || GTK_APP_JAVA==qtSettings.app)
                 opts->scrollbarType=SCROLLBAR_WINDOWS;
             else
             {
-                static const char *constSbStrFormat="style \"QtCSBt\" "
+                static const char *constSbStrFormat="style \""QTC_RC_SETTING"SBt\" "
                                                     "{ GtkScrollbar::has-backward-stepper=%d "
                                                       "GtkScrollbar::has-forward-stepper=%d "
                                                       "GtkScrollbar::has-secondary-backward-stepper=%d "
                                                       "GtkScrollbar::has-secondary-forward-stepper=%d } "
-                                                    "class \"*\" style \"QtCSBt\"";
+                                                    "class \"*\" style \""QTC_RC_SETTING"SBt\"";
                 tmpStr=(char *)realloc(tmpStr, strlen(constSbStrFormat)+1);
 
                 if(GTK_APP_OPEN_OFFICE==qtSettings.app)
@@ -1821,10 +1822,10 @@ static gboolean qtInit(Options *opts)
 
             /* Set cursor colours... */
             { /* C-Scope */
-                static const char *constStrFormat="style \"QtCCrsr\" "
+                static const char *constStrFormat="style \""QTC_RC_SETTING"Crsr\" "
                                                     "{ GtkWidget::cursor-color=\"#%02X%02X%02X\" "
                                                       "GtkWidget::secondary-cursor-color=\"#%02X%02X%02X\" } "
-                                                    "class \"*\" style \"QtCCrsr\"";
+                                                    "class \"*\" style \""QTC_RC_SETTING"Crsr\"";
                 tmpStr=(char *)realloc(tmpStr, strlen(constStrFormat)+1);
 
                 sprintf(tmpStr, constStrFormat, qtSettings.colors[PAL_ACTIVE][COLOR_TEXT].red>>8,
@@ -1840,27 +1841,27 @@ static gboolean qtInit(Options *opts)
                 opts->gtkScrollViews=true;
 
             { /* C-Scope */
-            bool doEffect=opts->round>=ROUND_FULL && EFFECT_NONE!=opts->buttonEffect;
+            bool doEffect=EFFECT_NONE!=opts->buttonEffect;
             int  thickness=2;
 
             if(doEffect)
-                gtk_rc_parse_string("style \"QtcEtch\" "
+                gtk_rc_parse_string("style \""QTC_RC_SETTING"Etch\" "
                                     "{ xthickness = 3 ythickness = 3 } "
-                                    "style \"QtcEtchI\" "
-                                    "{ GtkCheckButton::indicator_size = 15 } "
-                                    "class \"*GtkRange\" style \"QtcEtch\" "
-                                    "class \"*GtkSpinButton\" style \"QtcEtch\" "
-                                    "class \"*GtkEntry\" style  \"QtcEtch\" "
-                                    "widget_class \"*Toolbar*Entry\" style \"QtcEtch\" "
-                                    "class \"*Button\" style \"QtcEtch\""
-                                    "class \"*GtkOptionMenu\" style \"QtcEtch\""
+//                                     "style \""QTC_RC_SETTING"EtchI\" "
+//                                     "{ GtkCheckButton::indicator_size = 15 } "
+                                    "class \"*GtkRange\" style \""QTC_RC_SETTING"Etch\" "
+                                    "class \"*GtkSpinButton\" style \""QTC_RC_SETTING"Etch\" "
+                                    "class \"*GtkEntry\" style  \""QTC_RC_SETTING"Etch\" "
+                                    "widget_class \"*Toolbar*Entry\" style \""QTC_RC_SETTING"Etch\" "
+                                    "class \"*Button\" style \""QTC_RC_SETTING"Etch\""
+                                    "class \"*GtkOptionMenu\" style \""QTC_RC_SETTING"Etch\""
                                     /*"class \"*GtkWidget\" style \"QtcEtchI\""*/);
 
             if(!opts->gtkScrollViews)
-                gtk_rc_parse_string("style \"QtcSV\""
+                gtk_rc_parse_string("style \""QTC_RC_SETTING"SV\""
                                     " { GtkScrolledWindow::scrollbar-spacing = 0 "
                                       " GtkScrolledWindow::scrollbars-within-bevel = 1 } "
-                                    "class \"*GtkWidget\" style \"QtcSV\"");
+                                    "class \"*GtkWidget\" style \""QTC_RC_SETTING"SV\"");
 
             /* Scrolled windows */
             if(opts->squareScrollViews)
@@ -1869,9 +1870,9 @@ static gboolean qtInit(Options *opts)
                 thickness=3;
 
             { /* C-Scope */
-                static const char *constStrFormat="style \"QtcSVt\" "
+                static const char *constStrFormat="style \""QTC_RC_SETTING"SVt\" "
                                                     "{ xthickness = %d ythickness = %d } "
-                                                      "class \"*GtkScrolledWindow\" style \"QtcSVt\"";
+                                                      "class \"*GtkScrolledWindow\" style \""QTC_RC_SETTING"SVt\"";
 
                 tmpStr=(char *)realloc(tmpStr, strlen(constStrFormat)+1);
                 sprintf(tmpStr, constStrFormat, thickness, thickness);
@@ -1879,9 +1880,9 @@ static gboolean qtInit(Options *opts)
             } /* C-Scope */
 
             { /* C-Scope */
-                static const char *constStrFormat="style \"QtcPbar\" "
+                static const char *constStrFormat="style \""QTC_RC_SETTING"Pbar\" "
                                                     "{ xthickness = %d ythickness = %d } "
-                                                      "widget_class \"*GtkProgressBar\" style \"QtcPbar\"";
+                                                      "widget_class \"*GtkProgressBar\" style \""QTC_RC_SETTING"Pbar\"";
                 int pthickness=opts->fillProgress
                                 ? doEffect
                                     ? 1
@@ -1897,35 +1898,35 @@ static gboolean qtInit(Options *opts)
             } /* C-Scope 'doEffect' */
 
             { /* C-Scope */
-                static const char *constStrFormat="style \"QtcTT\" "
+                static const char *constStrFormat="style \""QTC_RC_SETTING"TT\" "
                                                     "{ xthickness = 4 ythickness = 4 bg[NORMAL] = \"#%02X%02X%02X\" fg[NORMAL] = \"#%02X%02X%02X\"} "
-                                                    "widget \"gtk-tooltips*\" style \"QtcTT\" "
-                                                    "widget \"gtk-tooltip*\" style \"QtcTT\"";
+                                                    "widget \"gtk-tooltips*\" style \""QTC_RC_SETTING"TT\" "
+                                                    "widget \"gtk-tooltip*\" style \""QTC_RC_SETTING"TT\"";
 
                 tmpStr=(char *)realloc(tmpStr, strlen(constStrFormat)+1);
                 sprintf(tmpStr, constStrFormat,
-                        toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP_TEXT].red),
-                        toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP_TEXT].green),
-                        toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP_TEXT].blue),
                         toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP].red),
                         toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP].green),
-                        toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP].blue));
+                        toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP].blue),
+                        toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP_TEXT].red),
+                        toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP_TEXT].green),
+                        toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TOOLTIP_TEXT].blue));
                 gtk_rc_parse_string(tmpStr);
             } /* C-Scope */
 
             if(opts->round>=ROUND_FULL && EFFECT_NONE!=opts->buttonEffect)
-                gtk_rc_parse_string("style \"QtCSwt\" { xthickness = 3 ythickness = 2 }"
-                                    "widget_class \"*.SwtFixed.GtkCombo.GtkButton\" style \"QtCSwt\""
-                                    "widget_class \"*.SwtFixed.GtkCombo.GtkEntry\" style \"QtCSwt\"");
+                gtk_rc_parse_string("style \""QTC_RC_SETTING"Swt\" { xthickness = 3 ythickness = 2 }"
+                                    "widget_class \"*.SwtFixed.GtkCombo.GtkButton\" style \""QTC_RC_SETTING"Swt\""
+                                    "widget_class \"*.SwtFixed.GtkCombo.GtkEntry\" style \""QTC_RC_SETTING"Swt\"");
 
             if(opts->lighterPopupMenuBgnd && !opts->borderMenuitems)
-                gtk_rc_parse_string("style \"QtCM\" { xthickness=1 ythickness=1 }\n"
-                                    "class \"*GtkMenu\" style \"QtCM\"");
+                gtk_rc_parse_string("style \""QTC_RC_SETTING"M\" { xthickness=1 ythickness=1 }\n"
+                                    "class \"*GtkMenu\" style \""QTC_RC_SETTING"M\"");
 
             { /* C-Scope */
-                static const char *constStrFormat="style \"QtcTree\" "
+                static const char *constStrFormat="style \""QTC_RC_SETTING"Tree\" "
                                                     "{ GtkTreeView::odd-row-color = \"#%02X%02X%02X\" GtkTreeView::even-row-color = \"#%02X%02X%02X\"} "
-                                                    "widget \"*GtkTreeView*\" style \"QtcTree\"";
+                                                    "widget \"*GtkTreeView*\" style \""QTC_RC_SETTING"Tree\"";
                 int alt=haveAlternareListViewCol() ? COLOR_LV : COLOR_BACKGROUND;
 
                 tmpStr=(char *)realloc(tmpStr, strlen(constStrFormat)+1);
@@ -1941,15 +1942,15 @@ static gboolean qtInit(Options *opts)
 
             if(!opts->useHighlightForMenu)
             {
-                static const char *constStrFormat="style \"QtcMnu\" "
+                static const char *constStrFormat="style \""QTC_RC_SETTING"Mnu\" "
                                                   "{ text[ACTIVE] = \"#%02X%02X%02X\" "
                                                   " text[SELECTED] = \"#%02X%02X%02X\" } "
-                                                  " class \"*MenuItem\" style \"QtcMnu\""
-                                                  " widget_class \"*MenuBar*MenuItem\" style \"QtcMnu\""
-                                                  " widget_class \"*.GtkAccelMenuItem\" style \"QtcMnu\""
-                                                  " widget_class \"*.GtkRadioMenuItem\" style \"QtcMnu\""
-                                                  " widget_class \"*.GtkCheckMenuItem\" style \"QtcMnu\""
-                                                  " widget_class \"*.GtkImageMenuItem\" style \"QtcMnu\"";
+                                                  " class \"*MenuItem\" style \""QTC_RC_SETTING"Mnu\""
+                                                  " widget_class \"*MenuBar*MenuItem\" style \""QTC_RC_SETTING"Mnu\""
+                                                  " widget_class \"*.GtkAccelMenuItem\" style \""QTC_RC_SETTING"Mnu\""
+                                                  " widget_class \"*.GtkRadioMenuItem\" style \""QTC_RC_SETTING"Mnu\""
+                                                  " widget_class \"*.GtkCheckMenuItem\" style \""QTC_RC_SETTING"Mnu\""
+                                                  " widget_class \"*.GtkImageMenuItem\" style \""QTC_RC_SETTING"Mnu\"";
 
                 tmpStr=(char *)realloc(tmpStr, strlen(constStrFormat)+1);
                 sprintf(tmpStr, constStrFormat,

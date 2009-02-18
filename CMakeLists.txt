@@ -7,9 +7,9 @@ set(DEBIAN_PACKAGE_DESCRIPTION "QtCurve for Gtk2")
 set(DEBIAN_PACKAGE_SECTION "gtk")
 set(CPACK_SOURCE_GENERATOR "TBZ2")
 set(CPACK_PACKAGE_VERSION_MAJOR "0")
-set(CPACK_PACKAGE_VERSION_MINOR "60")
+set(CPACK_PACKAGE_VERSION_MINOR "61")
 set(CPACK_PACKAGE_VERSION_PATCH "0")
-set(CPACK_PACKAGE_CONTACT "Craig Drummond <Craig.Drummond@lycos.co.uk>")
+set(CPACK_PACKAGE_CONTACT "Craig Drummond <craig_p_drummond@yahoo.co.uk>")
 set(QTCURVE_VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}")
 set(QTCURVE_VERSION_FULL "${QTCURVE_VERSION}.${CPACK_PACKAGE_VERSION_PATCH}")
 set(CPACK_SOURCE_PACKAGE_FILE_NAME "${CMAKE_PROJECT_NAME}-${QTCURVE_VERSION_FULL}")
@@ -99,22 +99,33 @@ if (GTK_INCLUDE_DIR)
     add_subdirectory(style)
     add_subdirectory(mozilla)
     if(QTC_REORDER_GTK_DIALOG_BUTTONS)
-        message("\n\n**************************************************************\n"
+        message("\n**************************************************************\n"
                 "Warning: You have enabled the option for QtCurve to try to manually\n"
                 "         re-order the buttons of Gtk dialogs. Note: This will cause\n"
                 "         errors to be printed to the console, and is only an\n"
                 "         experiment!\n"
-                "**************************************************************\n\n\n")
+                "**************************************************************\n")
     endif(QTC_REORDER_GTK_DIALOG_BUTTONS)
     if(QTC_OLD_MOZILLA)
-        message("\n\n**************************************************************\n"
+        message("\n**************************************************************\n"
                 "Information: Defaulting to treating Firefox as Firefox < 3.0\n"
-                "**************************************************************\n\n\n")
+                "**************************************************************\n")
     else(QTC_OLD_MOZILLA)
-        message("\n\n**************************************************************\n"
+        message("\n**************************************************************\n"
                 "Information: Defaulting to treating Firefox as Firefox >= 3.0\n"
-                "**************************************************************\n\n\n")
+                "**************************************************************\n")
     endif(QTC_OLD_MOZILLA)
+    if(QTC_DEFAULT_TO_KDE3)
+        message("\n**************************************************************\n"
+                "Information: Defaulting to reading KDE3 settings if \n"
+                "             KDE_SESSION_VERSION is not set\n"
+                "**************************************************************\n")
+    else(QTC_DEFAULT_TO_KDE3)
+        message("\n**************************************************************\n"
+                "Information: Defaulting to reading KDE4 settings if \n"
+                "             KDE_SESSION_VERSION is not set\n"
+                "**************************************************************\n")
+    endif(QTC_DEFAULT_TO_KDE3)
 else (GTK_INCLUDE_DIR)
     message(FATAL_ERROR "Could not locate Gtk2 include files")
 endif (GTK_INCLUDE_DIR)
