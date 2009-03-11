@@ -4504,7 +4504,7 @@ static void gtkDrawLayout(GtkStyle *style, GdkWindow *window, GtkStateType state
         {
             use_text=TRUE;
             swap_gc=TRUE;
-            for(i=0; i<4; ++i)
+            for(i=0; i<5; ++i)
             {
                 prevGcs[i]=style->text_gc[i];
                 style->text_gc[i]=qtcurveStyle->button_text_gc[GTK_STATE_INSENSITIVE==state ? PAL_DISABLED : PAL_ACTIVE];
@@ -4518,7 +4518,7 @@ static void gtkDrawLayout(GtkStyle *style, GdkWindow *window, GtkStateType state
             {
                 if(opts.customMenuTextColor && qtcurveStyle->menutext_gc[0])
                 {
-                    for(i=0; i<4; ++i)
+                    for(i=0; i<5; ++i)
                         prevGcs[i]=style->text_gc[i];
                     swap_gc=TRUE;
                     style->text_gc[GTK_STATE_NORMAL]=qtcurveStyle->menutext_gc[0];
@@ -4617,7 +4617,7 @@ static void gtkDrawLayout(GtkStyle *style, GdkWindow *window, GtkStateType state
                           x+1, y, layout);
 
         if(swap_gc)
-            for(i=0; i<4; ++i)
+            for(i=0; i<5; ++i)
                 style->text_gc[i]=prevGcs[i];
     }
 }
@@ -4777,7 +4777,7 @@ static void gtkDrawBoxGap(GtkStyle *style, GdkWindow *window, GtkStateType state
                           gint height, GtkPositionType gap_side, gint gap_x, gint gap_width)
 {
     GdkColor *col1 = &qtcPalette.background[0],
-             *col2 = &qtcPalette.background[APPEARANCE_FLAT==opts.appearance ? ORIGINAL_SHADE : 4],
+             *col2 = &qtcPalette.background[APPEARANCE_FLAT==opts.appearance ? ORIGINAL_SHADE : QT_FRAME_DARK_SHADOW],
              *outer = &qtcPalette.background[QT_STD_BORDER];
     gboolean rev = reverseLayout(widget);
     int      rightPos=(width -(gap_x + gap_width));
@@ -5666,7 +5666,8 @@ static void gtkDrawFocus(GtkStyle *style, GdkWindow *window, GtkStateType state,
     {
         gboolean drawRounded=QTC_ROUNDED;
         GdkColor *cols=FOCUS_BACKGROUND==opts.focus ? qtcPalette.background : qtcPalette.menuitem;
-        GdkColor *col=view ? &style->text[state]
+        GdkColor *col=view && GTK_STATE_SELECTED==state
+                           ? &style->text[state]
                            : &cols[FOCUS_BACKGROUND!=opts.focus && GTK_STATE_SELECTED==state ? 3 : QT_FOCUS];
 
         QTC_CAIRO_BEGIN
