@@ -767,15 +767,40 @@ static gboolean isHorizontalProgressbar(GtkWidget *widget)
     }
 }
 
-static gboolean isComboboxPopupWindow(GtkWidget *widget)
+static gboolean isComboBoxPopupWindow(GtkWidget *widget, int level)
 {
-    return widget && widget->name && GTK_IS_WINDOW(widget) &&
-           0==strcmp(widget->name, "gtk-combobox-popup-window");
+    if(widget)
+    {
+        if(widget->name && GTK_IS_WINDOW(widget) &&
+           0==strcmp(widget->name, "gtk-combobox-popup-window"))
+            return TRUE;
+        else if(level<4)
+            return isComboBoxPopupWindow(widget->parent, ++level);
+    }
+    return FALSE;
+}
+
+static gboolean isComboBoxList(GtkWidget *widget)
+{
+    return widget && widget->parent && /*GTK_IS_FRAME(widget) && */isComboBoxPopupWindow(widget->parent, 0);
+}
+
+static gboolean isComboPopupWindow(GtkWidget *widget, int level)
+{
+    if(widget)
+    {
+        if(widget->name && GTK_IS_WINDOW(widget) &&
+            0==strcmp(widget->name, "gtk-combo-popup-window"))
+            return TRUE;
+        else if(level<4)
+            return isComboPopupWindow(widget->parent, ++level);
+    }
+    return FALSE;
 }
 
 static gboolean isComboList(GtkWidget *widget)
 {
-    return widget && widget->parent && /*GTK_IS_FRAME(widget) && */isComboboxPopupWindow(widget->parent);
+    return widget && widget->parent && isComboPopupWindow(widget->parent, 0);
 }
 
 #ifdef QTC_GTK2_MENU_STRIPE
@@ -787,7 +812,7 @@ static gboolean isComboMenu(GtkWidget *widget)
     {
         GtkWidget *top=gtk_widget_get_toplevel(widget);
 
-        return top && (isComboboxPopupWindow(GTK_BIN(top)->child) ||
+        return top && (isComboBoxPopupWindow(GTK_BIN(top)->child) ||
                        GTK_IS_DIALOG(top) || /* Dialogs should not have menus! */
                        (GTK_IS_WINDOW(top) && GTK_WINDOW(top)->transient_parent &&
                         GTK_BIN(GTK_WINDOW(top)->transient_parent)->child &&
@@ -3084,7 +3109,8 @@ debugDisplayWidget(widget, 3);
 #endif
 
 #ifdef QTC_INCREASE_SB_SLIDER
-                if(slider && widget && GTK_IS_RANGE(widget) && !opts.flatSbarButtons)
+                if(slider && widget && GTK_IS_RANGE(widget) && !opts.flatSbarButtons &&
+                   !(GTK_STATE_PRELIGHT==state && MO_GLOW==opts.coloredMouseOver))
                 {
                     GtkAdjustment *adj = GTK_RANGE(widget)->adjustment;
                     gboolean      horizontal = GTK_RANGE(widget)->orientation != GTK_ORIENTATION_HORIZONTAL;
@@ -3256,9 +3282,7 @@ debugDisplayWidget(widget, 3);
             GdkColor      *usedcol=opts.fillSlider && adjustment->upper!=adjustment->lower && state!=GTK_STATE_INSENSITIVE
                                     ? qtcPalette.slider
                                         ? &qtcPalette.slider[ORIGINAL_SHADE]
-                                        : qtcPalette.mouseover
-                                            ? &qtcPalette.mouseover[ORIGINAL_SHADE]
-                                            : &qtcPalette.menuitem[1]
+                                        : &qtcPalette.menuitem[ORIGINAL_SHADE]
                                     : bgndcol;
 
             if(horiz && rev)
@@ -3700,6 +3724,18 @@ debugDisplayWidget(widget, 3);
             else if(!pbar && !border)
                 x--, y--, width+=2, height+=2;
 
+            if(mb)
+            {
+                y++;
+                height-=active_mb && opts.roundMbTopOnly ? 1 : 2;
+                if(TB_NONE!=opts.toolbarBorders)
+                {
+                    y++;
+                    height-=active_mb && opts.roundMbTopOnly ? 1 : 2;
+                    if(TB_LIGHT_ALL==opts.toolbarBorders || TB_DARK_ALL==opts.toolbarBorders)
+                        x++, width-=2;
+                }
+            }
             if(grayItem && mb && !active_mb && !opts.colorMenubarMouseOver &&
                (opts.borderMenuitems || !IS_FLAT(opts.menuitemAppearance)))
                 fillVal=ORIGINAL_SHADE;
@@ -3864,9 +3900,9 @@ static void gtkDrawShadow(GtkStyle *style, GdkWindow *window, GtkStateType state
 {
     QTC_CAIRO_BEGIN
 
-    if(isComboList(widget))
+    if(isComboBoxList(widget))
     {
-        /* if appears-as-list is set, then make border more KDE like */
+        sanitizeSize(window, &width, &height);
         cairo_new_path(cr);
         cairo_rectangle(cr, x+0.5, y+0.5, width-1, height-1);
         cairo_set_source_rgb(cr, QTC_CAIRO_COL(qtcPalette.background[QT_STD_BORDER]));
@@ -3875,6 +3911,18 @@ static void gtkDrawShadow(GtkStyle *style, GdkWindow *window, GtkStateType state
         cairo_rectangle(cr, x+1.5, y+1.5, width-3, height-3);
         cairo_set_source_rgb(cr, QTC_CAIRO_COL(style->base[state]));
         cairo_stroke(cr);
+    }
+    else if(isComboList(widget))
+    {
+        sanitizeSize(window, &width, &height);
+        drawAreaColor(cr, area, NULL, &style->base[state], x, y, width, height);
+        if(!DETAIL("viewport"))
+        {
+            cairo_new_path(cr);
+            cairo_rectangle(cr, x+0.5, y+0.5, width-1, height-1);
+            cairo_set_source_rgb(cr, QTC_CAIRO_COL(qtcPalette.background[QT_STD_BORDER]));
+            cairo_stroke(cr);
+        }
     }
 #if 0
     else if(isComboFrame(widget))

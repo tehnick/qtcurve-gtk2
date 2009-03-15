@@ -720,13 +720,13 @@ static void readKdeGlobals(const char *rc, int rd, Options *opts)
         while(found!=rd && NULL!=fgets(line, QTC_MAX_INPUT_LINE_LEN, f))
             if(line[0]=='[')
             {
-                if(opts->mapKdeIcons && 0==strncmp_i(line, "[Icons]", 7))
+                if(0==strncmp_i(line, "[Icons]", 7))
                     section=SECT_ICONS;
                 else if(0==strncmp_i(line, "[Toolbar style]", 15))
                     section=SECT_TOOLBAR_STYLE;
-                else if(opts->mapKdeIcons && 0==strncmp_i(line, "[MainToolbarIcons]", 18))
+                else if(0==strncmp_i(line, "[MainToolbarIcons]", 18))
                     section=SECT_MAIN_TOOLBAR_ICONS;
-                else if(opts->mapKdeIcons && 0==strncmp_i(line, "[SmallIcons]", 12))
+                else if(0==strncmp_i(line, "[SmallIcons]", 12))
                     section=SECT_SMALL_ICONS;
                 else if(qtSettings.qt4 && 0==strncmp_i(line, "[Colors:View]", 13))
                     section=SECT_KDE4_COL_VIEW;
@@ -755,8 +755,24 @@ static void readKdeGlobals(const char *rc, int rd, Options *opts)
                         break;
                 }
             }
+            else if (SECT_ICONS==section && rd&RD_ICONS && !(found&RD_ICONS) &&
+                     0==strncmp_i(line, "Theme=", 6))
+            {
+                char *eq=strstr(line, "=");
+
+                if(eq && ++eq)
+                {
+                    unsigned int len=strlen(eq);
+
+                    qtSettings.icons=(char *)realloc(qtSettings.icons, len+1);
+                    strcpy(qtSettings.icons, eq);
+                    if('\n'==qtSettings.icons[len-1])
+                        qtSettings.icons[len-1]='\0';
+                }
+                found|=RD_ICONS;
+            }
             else if (SECT_SMALL_ICONS==section && rd&RD_SMALL_ICON_SIZE && !(found&RD_SMALL_ICON_SIZE) &&
-                        0==strncmp_i(line, "Size=", 5))
+                     0==strncmp_i(line, "Size=", 5))
             {
                 int size=readInt(line, 5);
 
@@ -1845,7 +1861,7 @@ static gboolean qtInit(Options *opts)
                                  0L};
 
             for(f=0; 0!=files[f]; ++f)
-                readKdeGlobals(files[f], (opts->mapKdeIcons ? RD_ICONS|RD_SMALL_ICON_SIZE : 0)|RD_TOOLBAR_STYLE|
+                readKdeGlobals(files[f], RD_ICONS|RD_SMALL_ICON_SIZE|RD_TOOLBAR_STYLE|
                                          RD_TOOLBAR_ICON_SIZE|RD_BUTTON_ICONS|RD_LIST_SHADE|
                                          (qtSettings.qt4 ? RD_KDE4_PAL|RD_FONT|RD_CONTRAST|RD_STYLE : RD_LIST_COLOR),
                                opts);
@@ -2034,12 +2050,14 @@ static gboolean qtInit(Options *opts)
 
             if(opts->mapKdeIcons && (path=getIconPath()))
             {
-                int  versionLen=1+strlen(VERSION)+1+2+(6*2)+1;  /* '#' VERSION ' '<kde version> <..nums above..>\0 */
+                const char *iconTheme=qtSettings.icons ? qtSettings.icons : "XX";
+                int  versionLen=1+strlen(VERSION)+1+strlen(iconTheme)+1+2+(6*2)+1;  /* '#' VERSION ' '<kde version> <..nums above..>\0 */
                 char *version=(char *)malloc(versionLen);
 
                 getGtk2CfgFile(&tmpStr, xdg, "qtcurve.gtk-icons");
-                sprintf(version, "#%s %02X%02X%02X%02X%02X%02X%02X",
-                                 VERSION, 
+                sprintf(version, "#%s %s %02X%02X%02X%02X%02X%02X%02X",
+                                 VERSION,
+                                 iconTheme,
                                  qtSettings.qt4 ? 4 : 3,
                                  qtSettings.iconSizes.smlTbSize,
                                  qtSettings.iconSizes.tbSize,
@@ -2050,11 +2068,12 @@ static gboolean qtInit(Options *opts)
 
                 if(!checkFileVersion(tmpStr, version, versionLen))
                 {
-                    static const char *constCmdStrFmt="perl "GTK_THEME_DIR"/map_kde_icons.pl "GTK_THEME_DIR"/icons%d %s %d %d %d %d %d %d %d %s > %s";
+                    static const char *constCmdStrFmt="perl "GTK_THEME_DIR"/map_kde_icons.pl "GTK_THEME_DIR"/icons%d %s %d %d %d %d %d %d %d %s "VERSION" > %s";
 
                     const char *kdeprefix=kdeIconsPrefix();
-                    char       *cmdStr=(char *)malloc(strlen(constCmdStrFmt)+strlen(VERSION)
+                    char       *cmdStr=(char *)malloc(strlen(constCmdStrFmt)
                                                       +2+(4*6)+2+
+                                                      strlen(iconTheme)+
                                                       (kdeprefix ? strlen(kdeprefix) : DEFAULT_ICON_PREFIX_LEN)+strlen(tmpStr)+1);
 
                     sprintf(cmdStr, constCmdStrFmt,
@@ -2067,9 +2086,8 @@ static gboolean qtInit(Options *opts)
                                     qtSettings.iconSizes.btnSize,
                                     qtSettings.iconSizes.mnuSize,
                                     qtSettings.iconSizes.dlgSize,
-                                    VERSION,
+                                    iconTheme,
                                     tmpStr);
-
                     system(cmdStr);
                     free(cmdStr);
                 }
@@ -2354,6 +2372,18 @@ static gboolean qtInit(Options *opts)
                         toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TEXT].red),
                         toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TEXT].green),
                         toQtColor(qtSettings.colors[PAL_ACTIVE][COLOR_TEXT].blue));
+                gtk_rc_parse_string(tmpStr);
+            }
+
+            if(TB_NONE!=opts->toolbarBorders)
+            {
+                static const char *constStrFormat="style \""QTC_RC_SETTING"Mnu\" "
+                                                  "{ xthickness=1 ythickness=%d } "
+                                                  " widget_class \"*MenuBar*MenuItem\" style \""QTC_RC_SETTING"Mnu\"";
+
+                tmpStr=(char *)realloc(tmpStr, strlen(constStrFormat)+1);
+                sprintf(tmpStr, constStrFormat,
+                        TB_LIGHT_ALL==opts->toolbarBorders || TB_DARK_ALL==opts->toolbarBorders ? 4 : 3);
                 gtk_rc_parse_string(tmpStr);
             }
 
