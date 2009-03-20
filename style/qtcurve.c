@@ -1235,19 +1235,32 @@ static GtkWidget **lookupMenubarHash(void *hash, gboolean create)
     return rv;
 }
 
+static gboolean menuIsSelectable(GtkWidget *menu)
+{
+    return !((!GTK_BIN(menu)->child &&
+             G_OBJECT_TYPE(menu) == GTK_TYPE_MENU_ITEM) ||
+             GTK_IS_SEPARATOR_MENU_ITEM(menu) ||
+             !GTK_WIDGET_IS_SENSITIVE(menu) ||
+             !GTK_WIDGET_VISIBLE(menu));
+}
+
 static gboolean menubarEvent(GtkWidget *widget, GdkEvent *event, gpointer user_data)
 {
     if(GDK_MOTION_NOTIFY==event->type)
     {
         static int last_x=-100, last_y=-100;
 
+        if(event->motion.x<2.0)
+            event->motion.x+=2.0, event->motion.x_root+=2.0;
+        if(event->motion.y<2.0)
+            event->motion.y+=2.0, event->motion.y_root+=2.0;
         if(abs(last_x-event->motion.x_root)>4 || abs(last_y-event->motion.y_root)>4)
         {
             GtkWidget **item=lookupMenubarHash(widget, FALSE);
 
             if(item)
             {
-                GtkMenuShell *menuShell = GTK_MENU_SHELL (widget);
+                GtkMenuShell *menuShell=GTK_MENU_SHELL(widget);
                 GList        *children=menuShell->children;
                 GtkWidget    *current=NULL;
                 int          nx, ny;
@@ -1294,6 +1307,55 @@ static gboolean menubarEvent(GtkWidget *widget, GdkEvent *event, gpointer user_d
                     gtk_widget_set_state(*item, GTK_STATE_NORMAL);
             }
             *item=0;
+        }
+    }
+    else if(GDK_BUTTON_PRESS==event->type/* || GDK_BUTTON_RELEASE==event->type*/)
+    {
+        // QtCurve's menubars have a 2 pixel border -> but want the left/top to be 'active'...
+        int nx, ny;
+        gdk_window_get_origin(widget->window, &nx, &ny);
+        if((event->button.x_root-nx)<=2.0 || (event->button.y_root-ny)<=2.0)
+        {
+            GtkMenuShell *menuShell=GTK_MENU_SHELL(widget);
+            GList        *children=menuShell->children;
+
+            if((event->button.x_root-nx)<=2.0)
+                event->button.x_root+=2.0;
+            if((event->button.y_root-ny)<=2.0)
+                event->button.y_root+=2.0;
+
+            while (children)
+            {
+                GtkWidget *item = children->data;
+                int cx=(item->allocation.x+nx),
+                    cy=(item->allocation.y+ny),
+                    cw=(item->allocation.width),
+                    ch=(item->allocation.height);
+
+                if(cx<=event->button.x_root && cy<=event->button.y_root &&
+                   (cx+cw)>event->button.x_root && (cy+ch)>event->button.y_root)
+                {
+                    if(menuIsSelectable(item))
+                    {
+                        if(GDK_BUTTON_PRESS==event->type)
+                        {
+                            if(item!=menuShell->active_menu_item)
+                                gtk_menu_shell_select_item(menuShell, item);
+                            else
+                                gtk_menu_shell_deselect(menuShell);
+                        }
+//                         else if(GDK_BUTTON_RELEASE==event->type)
+//                         {
+//                             if(item==menuShell->active_menu_item)
+//                                 gtk_menu_shell_deselect(menuShell);
+//                         }
+                        return TRUE;
+                    }
+
+                    break;
+                }
+                children = children->next;
+            }
         }
     }
 
@@ -2305,10 +2367,10 @@ printf("Draw flat box %d %d %d %d %d %d %s  ", state, shadow_type, x, y, width, 
 debugDisplayWidget(widget, 3);
 #endif
 
-#define QTC_MODAL_HACK_NAME  "--kgtk-modal-dialog-hack--"
-#define QTC_MENU_HACK_NAME   "--kgtk-menu-hack--"
+#define QTC_MODAL_HACK_NAME  "--qtcurve-modal-dialog-hack--"
+#define QTC_MENU_HACK_NAME   "--qtcurve-menu-hack--"
 #ifdef QTC_REORDER_GTK_DIALOG_BUTTONS
-#define QTC_BUTTON_HACK_NAME "--kgtk-button-hack--"
+#define QTC_BUTTON_HACK_NAME "--qtcurve-button-hack--"
 
 #if GTK_CHECK_VERSION(2, 6, 0)
     if(!opts.gtkButtonOrder && GTK_IS_WINDOW(widget) && detail && 0==strcmp(detail, "base"))
@@ -2543,6 +2605,9 @@ debugDisplayWidget(widget, 3);
             }
         }
 #endif
+        if(widget && GTK_STATE_INSENSITIVE!=state)
+            state=GTK_WIDGET_STATE(widget);
+
         if(paf)  /* The paf here is expected to be on the gnome panel */
             if(height<width)
                 y++;
@@ -2902,7 +2967,8 @@ debugDisplayWidget(widget, 3);
             lookupMenubarHash(widget, TRUE); /* Create hash entry... */
             if(opts.menubarMouseOver)
             {
-                gtk_widget_add_events(widget, GDK_LEAVE_NOTIFY_MASK|GDK_POINTER_MOTION_MASK);
+                gtk_widget_add_events(widget, GDK_LEAVE_NOTIFY_MASK|GDK_POINTER_MOTION_MASK|
+                                              GDK_BUTTON_PRESS_MASK/*|GDK_BUTTON_RELEASE_MASK*/);
                 g_signal_connect(G_OBJECT(widget), "unrealize", G_CALLBACK(menubarDeleteEvent), widget);
                 g_signal_connect(G_OBJECT(widget), "event", G_CALLBACK(menubarEvent), widget);
             }
@@ -3288,6 +3354,7 @@ debugDisplayWidget(widget, 3);
                                         ? qtcPalette.slider
                                         : qtcPalette.menuitem
                                     : qtcPalette.background;
+            EWidget       wid=WIDGET_SLIDER_TROUGH;
 
             if(horiz && rev)
                 inverted=!inverted;
@@ -3315,14 +3382,14 @@ debugDisplayWidget(widget, 3);
 
             if(GTK_STATE_INSENSITIVE==state)
                 bgndcol=&bgndcols[ORIGINAL_SHADE];
-            else if (0==strcmp(detail, "trough-lower"))
+            else if (0==strcmp(detail, "trough-lower") && opts.fillSlider)
             {
                 bgndcols=usedcols;
                 bgndcol=&usedcols[ORIGINAL_SHADE];
+                wid=WIDGET_FILLED_SLIDER_TROUGH;
             }
             drawLightBevel(cr, style, window, state, area, NULL, x, y, width, height,
-                           bgndcol, bgndcols,
-                           ROUNDED_ALL, WIDGET_SLIDER_TROUGH,
+                           bgndcol, bgndcols, ROUNDED_ALL, wid,
                            BORDER_FLAT, DF_DO_CORNERS|DF_SUNKEN|DF_DO_BORDER|
                            (horiz ? 0 : DF_VERT), widget);
 
@@ -3349,7 +3416,7 @@ debugDisplayWidget(widget, 3);
                 {
                     drawLightBevel(cr, style, window, state, area, NULL, used_x, used_y, used_w, used_h,
                                    &usedcols[ORIGINAL_SHADE], usedcols,
-                                   ROUNDED_ALL, WIDGET_SLIDER_TROUGH,
+                                   ROUNDED_ALL, WIDGET_FILLED_SLIDER_TROUGH,
                                    BORDER_FLAT, DF_DO_CORNERS|DF_SUNKEN|DF_DO_BORDER|
                                    (horiz ? 0 : DF_VERT), widget);
                 }
@@ -3483,32 +3550,21 @@ debugDisplayWidget(widget, 3);
     {
         //if(GTK_SHADOW_NONE!=shadow_type)
         {
-            GdkColor    bgnd=activeWindow && menubar && USE_SHADED_MENU_BAR_COLORS
-                                    ? qtcPalette.menubar[ORIGINAL_SHADE]
-                                    : style->bg[state];
-            GdkColor    *col=activeWindow && menubar && USE_SHADED_MENU_BAR_COLORS
+            GdkColor    *col=activeWindow && menubar && (GTK_STATE_INSENSITIVE!=state || SHADE_NONE!=opts.shadeMenubars)
                                 ? &qtcPalette.menubar[ORIGINAL_SHADE]
                                 : &style->bg[state];
             EAppearance app=menubar ? opts.menubarAppearance : opts.toolbarAppearance;
 
             /* Toolbars and menus */
             if(!IS_FLAT(app))
-            {
-                if(activeWindow && menubar && SHADE_DARKEN==opts.shadeMenubars)
-                    shade(&bgnd, &bgnd, MENUBAR_DARK_FACTOR);
-
                 drawBevelGradient(cr, style, area, NULL, x, y, width,
-                                height, &bgnd,
+                                height, col,
                                 menubar
                                     ? TRUE
                                     : DETAIL("handlebox")
                                             ? width<height
                                             : width>height,
                                 FALSE, app, WIDGET_OTHER);
-            }
-            else if(activeWindow && menubar && SHADE_DARKEN==opts.shadeMenubars)
-                drawAreaMod(cr, style, GTK_STATE_NORMAL, area, NULL, MENUBAR_DARK_FACTOR, x, y,
-                            width, height);
             else
                 drawAreaColor(cr, area, NULL, col, x, y, width, height);
 
@@ -3520,7 +3576,7 @@ debugDisplayWidget(widget, 3);
                          right=FALSE,
                          all=TB_LIGHT_ALL==opts.toolbarBorders || TB_DARK_ALL==opts.toolbarBorders;
                 int      border=TB_DARK==opts.toolbarBorders || TB_DARK_ALL==opts.toolbarBorders ? 3 : 4;
-                GdkColor *cols=activeWindow && menubar && USE_SHADED_MENU_BAR_COLORS
+                GdkColor *cols=activeWindow && menubar && GTK_STATE_INSENSITIVE!=state
                                 ? qtcPalette.menubar : qtcPalette.background;
 
                 if(menubar)
@@ -3703,6 +3759,11 @@ debugDisplayWidget(widget, 3);
             }
         }
 
+        // The handling of 'mouse pressed' in the menubar event handler doesn't seem to set the
+        // menu as active, therefore the active_mb fails. However the check below works...
+        if(mb && !active_mb && widget)
+            active_mb=widget==GTK_MENU_SHELL(mb)->active_menu_item;
+
         /* The following 'if' is just a hack for a menubar item problem with pidgin. Sometime, a 12pix width
            empty menubar item is drawn on the right - and doesnt disappear! */
         if(!mb || width>12)
@@ -3731,18 +3792,6 @@ debugDisplayWidget(widget, 3);
             else if(!pbar && !border)
                 x--, y--, width+=2, height+=2;
 
-            if(mb)
-            {
-                y++;
-                height-=active_mb && opts.roundMbTopOnly ? 1 : 2;
-                if(TB_NONE!=opts.toolbarBorders)
-                {
-                    y++;
-                    height-=active_mb && opts.roundMbTopOnly ? 1 : 2;
-                    if(TB_LIGHT_ALL==opts.toolbarBorders || TB_DARK_ALL==opts.toolbarBorders)
-                        x++, width-=2;
-                }
-            }
             if(grayItem && mb && !active_mb && !opts.colorMenubarMouseOver &&
                (opts.borderMenuitems || !IS_FLAT(opts.menuitemAppearance)))
                 fillVal=ORIGINAL_SHADE;
@@ -3756,11 +3805,14 @@ debugDisplayWidget(widget, 3);
                          mainWidth=width-(reverse ? roundOffet+1 : 1+MENUITEM_FADE_SIZE),
                          fadeX=reverse ? x+1 : width-MENUITEM_FADE_SIZE;
 
+                clipPath(cr, mainX-1, mainY-1, mainWidth+1, height-2, WIDGET_MENU_ITEM, RADIUS_INTERNAL,
+                         reverse ? ROUNDED_RIGHT : ROUNDED_LEFT);
                 drawAreaColor(cr, area, NULL, &itemCols[fillVal], mainX, mainY, mainWidth, height-(roundOffet+3));
+                unsetCairoClipping(cr);
 
                 if(QTC_ROUNDED)
                     realDrawBorder(cr, style, state, area, NULL, mainX-1, mainY-1, mainWidth+1, height-2,
-                                  itemCols, reverse ? ROUNDED_RIGHT : ROUNDED_LEFT, BORDER_FLAT, WIDGET_OTHER, 0, fillVal);
+                                  itemCols, reverse ? ROUNDED_RIGHT : ROUNDED_LEFT, BORDER_FLAT, WIDGET_MENU_ITEM, 0, fillVal);
 
                 {
                     GdkColor        *left=reverse ? &qtcPalette.menu : &itemCols[fillVal],
@@ -4535,6 +4587,9 @@ static void gtkDrawLayout(GtkStyle *style, GdkWindow *window, GtkStateType state
         debugDisplayWidget(widget, 3);
 #endif
 
+        if(DETAIL("cellrenderertext") && widget && GTK_STATE_INSENSITIVE==GTK_WIDGET_STATE(widget))
+             state=GTK_STATE_INSENSITIVE;
+             
 #ifndef QTC_READ_INACTIVE_PAL /* If we reead the inactive palette, then there is no need for the following... */
         /* The following fixes the text in list views... if not used, when an item is selected it
            gets the selected text color - but when the window changes focus it gets the normal
@@ -4542,7 +4597,7 @@ static void gtkDrawLayout(GtkStyle *style, GdkWindow *window, GtkStateType state
          if(DETAIL("cellrenderertext") && GTK_STATE_ACTIVE==state)
              state=GTK_STATE_SELECTED;
 #endif
-
+            
         if(opts.shadeMenubarOnlyWhenActive)
         {
             GtkWindow *topLevel=GTK_WINDOW(gtk_widget_get_toplevel(widget));
@@ -4555,6 +4610,9 @@ static void gtkDrawLayout(GtkStyle *style, GdkWindow *window, GtkStateType state
             state=GTK_STATE_NORMAL;
 
         but=isOnButton(widget, 0, &def_but) || isOnComboBox(widget, 0);
+
+        if(isOnListViewHeader(widget, 0))
+            y--;
 
         if(but && (qtSettings.qt4 || GTK_STATE_INSENSITIVE!=state))
         {
@@ -5740,7 +5798,7 @@ static void gtkDrawFocus(GtkStyle *style, GdkWindow *window, GtkStateType state,
             if(isListViewHeader(widget))
             {
                 btn=false;
-                height--;
+                y++, x++, width-=2, height-=3;
             }
             if(QTC_FULL_FOCUS)
             {
@@ -6088,18 +6146,34 @@ static void generateColors()
     shadeColors(&qtSettings.colors[PAL_DISABLED][COLOR_BUTTON], qtcPalette.button[PAL_DISABLED]);
     shadeColors(&qtSettings.colors[PAL_ACTIVE][COLOR_SELECTED], qtcPalette.menuitem);
 
-    if(SHADE_CUSTOM==opts.shadeMenubars)
-        shadeColors(&opts.customMenubarsColor, qtcPalette.menubar);
-    else if(SHADE_BLEND_SELECTED==opts.shadeMenubars)
+    switch(opts.shadeMenubars)
     {
-        GdkColor color;
+        case SHADE_NONE:
+            memcpy(qtcPalette.menubar, qtcPalette.background, sizeof(GdkColor)*(TOTAL_SHADES+1));
+            break;
+        case SHADE_BLEND_SELECTED:
+        {
+            GdkColor color;
 
-        if(IS_GLASS(opts.appearance))
-            shade(&qtcPalette.menuitem[ORIGINAL_SHADE], &color, MENUBAR_GLASS_SELECTED_DARK_FACTOR);
-        else
-            color=qtcPalette.menuitem[ORIGINAL_SHADE];
+            if(IS_GLASS(opts.appearance))
+                shade(&qtcPalette.menuitem[ORIGINAL_SHADE], &color, MENUBAR_GLASS_SELECTED_DARK_FACTOR);
+            else
+                color=qtcPalette.menuitem[ORIGINAL_SHADE];
 
-        shadeColors(&color, qtcPalette.menubar);
+            shadeColors(&color, qtcPalette.menubar);
+            break;
+        }
+        case SHADE_CUSTOM:
+            shadeColors(&opts.customMenubarsColor, qtcPalette.menubar);
+            break;
+        case SHADE_DARKEN:
+        {
+            GdkColor color;
+
+            shade(&qtcPalette.background[ORIGINAL_SHADE], &color, MENUBAR_DARK_FACTOR);
+            shadeColors(&color, qtcPalette.menubar);
+            break;
+        }
     }
 
     switch(opts.shadeSliders)

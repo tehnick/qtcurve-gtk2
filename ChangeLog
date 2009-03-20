@@ -1,3 +1,10 @@
+0.62.5
+------
+1. Use gradient for filled slider - unless appearance is flat/raised.
+2. Slightly alter listview header size.
+3. Fix white-on-white text of disabled listviews - noticable in synaptic.
+4. If a toolbar is disabled, so should the handle be.
+
 0.62.4
 ------
 1. When drawing filled slider groove, use fill colour for border as well.
