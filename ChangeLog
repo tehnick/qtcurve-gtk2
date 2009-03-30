@@ -1,3 +1,14 @@
+0.62.6
+------
+1. Alter meunbar item widths slightly to make more consistent with KDE4.
+2. If QTC_NEW_MOZILLA is not set, don't allow faded menuitems for thunderbird -
+   these just don't work here. In thunderbird it is not possible to detect if a
+   menuitem is on a menubar, or in a popup menu :-(
+3. Make file chooser's pathbar buttons more KDE4 like. This is not 100%, as there
+   are no ">" arrows. To seperate items a light gray "/" is drawn.
+4. Improve entry focus highlight when round>full.
+5. Don't use max round for close buttons on GEdit's tabs.
+
 0.62.5
 ------
 1. Use gradient for filled slider - unless appearance is flat/raised.
