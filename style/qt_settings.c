@@ -30,7 +30,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/unistd.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <stdio.h>
+#include <dirent.h>
 
 #define QTC_READ_INACTIVE_PAL /* Control whether QtCurve should read the inactive palette as well.. */
 #define QTC_RC_SETTING "QtC__"
@@ -304,6 +307,52 @@ enum
     RD_LIST_SHADE        = 0x1000,
     RD_KDE4_PAL          = 0x2000,
 };
+
+/*
+ Try to determine if a mozilla app is >= v3.  Tested with:
+
+Mozilla Firefox 3.0.8, Copyright (c) 1998 - 2009 mozilla.org
+ Thunderbird 2.0.0.21, Copyright (c) 1998-2009 mozilla.org
+ Thunderbird 3.0b2, Copyright (c) 1998-2009 mozilla.org
+Mozilla XULRunner 1.9.0.8 - 2009032711
+
+To get the verison number:
+1. Get the command-line from /proc/<pid>/cmdline - so Linux specific
+2. Append --version to this, and call the application
+3. Look for the fist '.' in the returned string
+4. Look at the character to the left of that, if it is a digit and >2  then
+   we assume this is a new mozilla app...
+
+...what a pain...
+*/
+
+static int getMozillaVersion(int pid)
+{
+    char cmdline[MAX_LINE_LEN+11];
+    int  ver=0,
+         procFile=-1;
+
+    sprintf(cmdline, "/proc/%d/cmdline", pid);
+
+    if(-1!=(procFile=open(cmdline, O_RDONLY)))
+    {
+        if(read(procFile, cmdline, MAX_LINE_LEN)>2)
+        {
+            char *version=0L;
+            strcat(cmdline, " --version");
+            if(g_spawn_command_line_sync(cmdline, &version, NULL, NULL, NULL))
+            {
+                char *dot=strchr(version, '.');
+
+                if(dot && dot!=version && isdigit(dot[-1]))
+                    ver=dot[-1]-'0';
+            }
+        }
+        close(procFile);
+    }
+
+    return ver;
+}
 
 static char * getKdeHome()
 {
@@ -1182,12 +1231,6 @@ static void readQtRc(const char *rc, int rd, Options *opts, gboolean absolute, g
 static int qt_refs=0;
 
 #define MAX_APP_NAME_LEN 32
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <dirent.h>
 
 #define KDE_CFG_DIR         "/share/config/"
 #define KDEGLOBALS_FILE     KDE_CFG_DIR"kdeglobals"
@@ -1494,14 +1537,16 @@ static char * getAppName()
                       "{ background-color : HighlightText !important; color: HighlightText !important; } "\
                       "/* "QTC_GUARD_STR" */\n"
 
-#define CSS_FILE_STR  "@import url(\"file://"QTC_MOZILLA_DIR"/QtCurve.css\"); /* "QTC_GUARD_STR" */\n"
+#define CSS_FILE_STR     "@import url(\"file://"QTC_MOZILLA_DIR"/QtCurve.css\"); /* "QTC_GUARD_STR" */\n"
+#define BTN_CSS_FILE_STR "@import url(\"file://"QTC_MOZILLA_DIR"/QtCurve-KDEButtonOrder.css\"); /* "QTC_GUARD_STR" */\n"
 
-static void processUserChromeCss(char *file, gboolean add_css, gboolean add_menu_colors)
+static void processUserChromeCss(char *file, gboolean add_btn_css, gboolean add_menu_colors)
 {
     FILE        *f=fopen(file, "r");
     char        *contents=NULL;
-    gboolean    remove_css=FALSE,
-                remove_menu_colors=FALSE;
+    gboolean    remove_btn_css=FALSE,
+                remove_menu_colors=FALSE,
+                add_css=TRUE;
     struct stat st;
     size_t      file_size=0,
                 new_size=0;
@@ -1524,27 +1569,26 @@ static void processUserChromeCss(char *file, gboolean add_css, gboolean add_menu
                 {
                     gboolean write_line=TRUE;
 
-                    if(0==strcmp(line, CSS_FILE_STR))
+                    if(0==strcmp(line, BTN_CSS_FILE_STR))
                     {
-                        if (add_css)
-                            add_css=FALSE;
+                        if (add_btn_css)
+                            add_btn_css=FALSE;
                         else
                         {
-                            remove_css=TRUE;
+                            remove_btn_css=TRUE;
                             write_line=FALSE;
                         }
                     }
-                    else
+                    else if(0==strcmp(line, CSS_FILE_STR))
+                        add_css=FALSE;
+                    else if(0==strcmp(line, MENU_TEXT_STR))
                     {
-                        if(0==strcmp(line, MENU_TEXT_STR))
+                        if (add_menu_colors)
+                            add_menu_colors=FALSE;
+                        else
                         {
-                            if (add_menu_colors)
-                                add_menu_colors=FALSE;
-                            else
-                            {
-                                remove_menu_colors=TRUE;
-                                write_line=FALSE;
-                            }
+                            remove_menu_colors=TRUE;
+                            write_line=FALSE;
                         }
                     }
                     if(write_line)
@@ -1558,11 +1602,11 @@ static void processUserChromeCss(char *file, gboolean add_css, gboolean add_menu
         fclose(f);
     }
 
-    if(!contents || add_css || add_menu_colors)
+    if(!contents || add_btn_css || add_menu_colors || add_css)
     {
         if(!contents)
         {
-            new_size=strlen(MENU_TEXT_STR)+strlen(CSS_FILE_STR)+3;
+            new_size=strlen(MENU_TEXT_STR)+strlen(BTN_CSS_FILE_STR)+strlen(CSS_FILE_STR)+4;
 
             contents=(char *)malloc(new_size);
             if(contents)
@@ -1571,7 +1615,7 @@ static void processUserChromeCss(char *file, gboolean add_css, gboolean add_menu
 
         if(contents)
         {
-            if(add_css)  /* CSS needs to be on 1st line */
+            if(add_css)
             {
                 char *css_contents=(char *)malloc(new_size);
 
@@ -1579,6 +1623,19 @@ static void processUserChromeCss(char *file, gboolean add_css, gboolean add_menu
                 {
                     css_contents[0]='\0';
                     strcat(css_contents, CSS_FILE_STR);
+                    strcat(css_contents, contents);
+                    free(contents);
+                    contents=css_contents;
+                }
+            }
+            if(add_btn_css)
+            {
+                char *css_contents=(char *)malloc(new_size);
+
+                if(css_contents)
+                {
+                    css_contents[0]='\0';
+                    strcat(css_contents, BTN_CSS_FILE_STR);
                     strcat(css_contents, contents);
                     free(contents);
                     contents=css_contents;
@@ -1595,7 +1652,7 @@ static void processUserChromeCss(char *file, gboolean add_css, gboolean add_menu
         }
     }
 
-    if(contents && (add_css || remove_css || add_menu_colors || remove_menu_colors))
+    if(contents && (add_btn_css || remove_btn_css || add_menu_colors || remove_menu_colors))
     {
         f=fopen(file, "w");
 
@@ -1608,7 +1665,7 @@ static void processUserChromeCss(char *file, gboolean add_css, gboolean add_menu
     }
 }
 
-static void processMozillaApp(gboolean add_css, gboolean add_menu_colors, char *app, gboolean under_moz)
+static void processMozillaApp(gboolean add_btn_css, gboolean add_menu_colors, char *app, gboolean under_moz)
 {
     const char *home=getHome();
 
@@ -1632,33 +1689,36 @@ static void processMozillaApp(gboolean add_css, gboolean add_menu_colors, char *
                     ((str=strstr(dir_ent->d_name, CSS_DEFAULT_ALT)) && str==dir_ent->d_name &&
                     '\0'!=str[strlen(CSS_DEFAULT_ALT)]))
                  {
-                     char        sub[MAX_CSS_HOME];
-                     struct stat statbuf;
+                    char        sub[MAX_CSS_HOME];
+                    struct stat statbuf;
 
 #ifdef QTC_MODIFY_MOZILLA_USER_JS
-                     /* Add custom user.js file */
-                     sprintf(sub, "%s%s/user.js", cssHome, dir_ent->d_name);
-                     if(-1==lstat(sub, &statbuf))
-                     {
-                         FILE *in=NULL;
+                    /* Add custom user.js file */
 
-                         sprintf(sub, QTC_MOZILLA_DIR"/%s-user.js", app);
+                    sprintf(sub, "%s%s/user.js", cssHome, dir_ent->d_name);
+                    if(-1==lstat(sub, &statbuf))
+                    {
+                        FILE *in=NULL;
 
-                         if((in=fopen(sub, "r")))
-                         {
-                             FILE *out=fopen(sub, "w");
+                        sprintf(sub, QTC_MOZILLA_DIR"/%s-user.js", app);
 
-                             if(out)
-                             {
-                                 char ch;
+                        if((in=fopen(sub, "r")))
+                        {
+                            FILE *out=NULL;
 
-                                 while((ch=fgetc(in))!=EOF)
-                                     fputc(ch, out);
-                                 fclose(out);
-                             }
-                             fclose(in);
-                         }
-                     }
+                            sprintf(sub, "%s%s/user.js", cssHome, dir_ent->d_name);
+
+                            if((out=fopen(sub, "w")))
+                            {
+                                char ch;
+
+                                while((ch=fgetc(in))!=EOF)
+                                    fputc(ch, out);
+                                fclose(out);
+                            }
+                            fclose(in);
+                        }
+                    }
 #endif
 
                      /* Now do userChrome.css */
@@ -1667,7 +1727,7 @@ static void processMozillaApp(gboolean add_css, gboolean add_menu_colors, char *
                      if(-1!=lstat(sub, &statbuf) && S_ISDIR(statbuf.st_mode))
                      {
                          strcat(sub, USER_CHROME_FILE);
-                         processUserChromeCss(sub, add_css, add_menu_colors);
+                         processUserChromeCss(sub, add_btn_css, add_menu_colors);
                      }
                  }
              }
@@ -1912,19 +1972,18 @@ static gboolean qtInit(Options *opts)
                 gboolean firefox=isMozApp(app, "firefox") || isMozApp(app, "iceweasel") ||
                                  isMozApp(app, "swiftfox") || isMozApp(app, "xulrunner"),
                          thunderbird=!firefox && isMozApp(app, "thunderbird"),
-                         mozThunderbird=!thunderbird && !firefox && isMozApp(app, "mozilla-thunderbird");
+                         mozThunderbird=!thunderbird && !firefox && isMozApp(app, "mozilla-thunderbird"),
+                         seamonkey=!thunderbird && !firefox && !mozThunderbird && isMozApp(app, "seamonkey");
+                int      mozVersion=0;
 
-                if(firefox || thunderbird || mozThunderbird)
+                if(firefox || thunderbird || mozThunderbird || seamonkey)
                 {
 #ifdef QTC_MODIFY_MOZILLA
                     GdkColor *menu_col=SHADE_CUSTOM==opts->shadeMenubars
                                         ? &opts->customMenubarsColor
                                         : &qtSettings.colors[PAL_ACTIVE][COLOR_SELECTED];
-                    gboolean add_menu_colors=FALSE;
-
-                    if(SHADE_BLEND_SELECTED==opts->shadeMenubars || (SHADE_CUSTOM==opts->shadeMenubars &&
-                                                               TOO_DARK(*menu_col) ))
-                        add_menu_colors=TRUE;
+                    gboolean add_menu_colors=SHADE_BLEND_SELECTED==opts->shadeMenubars ||
+                                             (SHADE_CUSTOM==opts->shadeMenubars && TOO_DARK(*menu_col) );
 
                     if(firefox)
                         processMozillaApp(!opts->gtkButtonOrder, add_menu_colors, "firefox", TRUE);
@@ -1939,8 +1998,13 @@ static gboolean qtInit(Options *opts)
                                     ? GTK_APP_NEW_MOZILLA :
 #endif
                                     GTK_APP_MOZILLA;
+
+                    if(GTK_APP_MOZILLA==qtSettings.app)
+                        mozVersion=getMozillaVersion(getpid());
+                    if(GTK_APP_MOZILLA==qtSettings.app && mozVersion>2)
+                        qtSettings.app=GTK_APP_NEW_MOZILLA;
                     if(GTK_APP_NEW_MOZILLA!=qtSettings.app && APPEARANCE_FADE==opts->menuitemAppearance &&
-                       (thunderbird || mozThunderbird))
+                       (thunderbird || mozThunderbird || (seamonkey && mozVersion<2)))
                         opts->menuitemAppearance=APPEARANCE_GRADIENT;
                 }
                 else if(0==strcmp(app, "soffice.bin"))

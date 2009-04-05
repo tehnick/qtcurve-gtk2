@@ -854,11 +854,13 @@ static int progressbarRound(GtkWidget *widget, gboolean rev)
     }
 }
 
-static gboolean isMozillaWidget(GtkWidget *widget)
+static gboolean isFixedWidget(GtkWidget *widget)
 {
-    return isMozilla() && widget && widget->parent && widget->parent->parent &&
+    return widget && widget->parent && widget->parent->parent &&
            GTK_IS_FIXED(widget->parent) && GTK_IS_WINDOW(widget->parent->parent);
 }
+
+#define isMozillaWidget(widget) (isMozilla() && isFixedWidget(widget))
 
 static void setState(GtkWidget *widget, GtkStateType *state, gboolean *btn_down, int sliderWidth, int sliderHeight)
 {
@@ -1789,11 +1791,19 @@ static void drawEtch(cairo_t *cr, GdkRectangle *area, GdkRegion *region,
                      GtkWidget *widget, int x, int y, int w, int h, gboolean raised,
                      int round, EWidget wid)
 {
-    double xd=x+0.5,
-           yd=y+0.5,
-           radius=getRadius(opts.round, w, h, wid, RADIUS_ETCH);
+    double       xd=x+0.5,
+                 yd=y+0.5,
+                 radius=getRadius(opts.round, w, h, wid, RADIUS_ETCH);
+    GdkRectangle *a=area,
+                 b;
 
-    setCairoClipping(cr, area, region);
+    if(WIDGET_COMBO_BUTTON==wid && GTK_APP_OPEN_OFFICE==qtSettings.app && widget && isFixedWidget(widget->parent))
+    {
+        b.x=x+2; b.y=y; b.width=w-4; b.height=h;
+        a=&b;
+    }
+        
+    setCairoClipping(cr, a, region);
 
     cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, QTC_ETCH_TOP_ALPHA);
     if(!raised)
@@ -1950,7 +1960,7 @@ static void drawLightBevel(cairo_t *cr, GtkStyle *style, GdkWindow *window, GtkS
     }
     else
         setCairoClipping(cr, area, region);
-        
+
     if(!colouredMouseOver && lightBorder)
     {
         GdkColor *col=&colors[QTC_LIGHT_BORDER(app)];
@@ -2902,6 +2912,9 @@ debugDisplayWidget(widget, 3);
                     break;
             }
 
+        if(isSpinButton && isFixedWidget(widget) && (isMozilla() || GTK_APP_OPEN_OFFICE==qtSettings.app))
+            x--;
+
         if(isSpinButton && !QTC_DO_EFFECT)
             if(GTK_ARROW_UP==arrow_type)
                 y--;
@@ -3017,13 +3030,22 @@ debugDisplayWidget(widget, 3);
 
     if(spinUp || spinDown)
     {
-        EWidget wid=spinUp ? WIDGET_SPIN_UP : WIDGET_SPIN_DOWN;
+        EWidget      wid=spinUp ? WIDGET_SPIN_UP : WIDGET_SPIN_DOWN;
+        GdkRectangle *a=area,
+                     b;
+        gboolean     ooOrMoz=GTK_APP_OPEN_OFFICE==qtSettings.app || isMozilla();
 
+        if(!a && isFixedWidget(widget) && ooOrMoz)
+        {
+            b.x=x; b.y=y; b.width=width; b.height=height;
+            a=&b;
+        }
+        
         if(WIDGET_SPIN_UP==wid)
         {
             if(QTC_DO_EFFECT)
             {
-                drawEtch(cr, area, NULL, widget, x-2, y, width+2, height*2, FALSE, ROUNDED_RIGHT, WIDGET_SPIN_UP);
+                drawEtch(cr, a, NULL, widget, x-2, y, width+2, height*2, FALSE, ROUNDED_RIGHT, WIDGET_SPIN_UP);
                 y++;
                 width--;
             }
@@ -3034,13 +3056,14 @@ debugDisplayWidget(widget, 3);
             GdkRectangle clip;
 
             clip.x=x-2, clip.y=y, clip.width=width+2, clip.height=height;
-            drawEtch(cr, &clip, NULL, widget, x-2, y-2, width+2, height+2, FALSE, ROUNDED_RIGHT, WIDGET_SPIN_DOWN);
+            drawEtch(cr, ooOrMoz ? a : &clip, NULL, widget, x-2, y-2, width+2, height+2, FALSE,
+                     ROUNDED_RIGHT, WIDGET_SPIN_DOWN);
             height--;
             width--;
         }
 
         drawBgnd(cr, &btn_colors[bgnd], widget, area, x+1, y+1, width-2, height-2);
-        drawLightBevel(cr, style, window, state, area, NULL, x, y, width, 
+        drawLightBevel(cr, style, window, state, area, NULL, x, y, width,
                        height-(WIDGET_SPIN_UP==wid && QTC_DO_EFFECT ? 1 : 0), &btn_colors[bgnd],
                        btn_colors, round, wid, BORDER_FLAT,
                        DF_DO_CORNERS|DF_DO_BORDER|
@@ -3250,6 +3273,16 @@ debugDisplayWidget(widget, 3);
                     }
                 }
 #endif
+
+                if(GTK_APP_OPEN_OFFICE==qtSettings.app && opts.flatSbarButtons && slider &&
+                   (SCROLLBAR_KDE==opts.scrollbarType || SCROLLBAR_WINDOWS==opts.scrollbarType) &&
+                   widget && GTK_IS_RANGE(widget) && isFixedWidget(widget))
+                {
+                    if (GTK_RANGE(widget)->orientation!=GTK_ORIENTATION_HORIZONTAL)
+                        y++, height--;
+                    else
+                        x+=2, width-=2;
+                }
 
                 if(defBtn && IND_TINT==opts.defBtnIndicator)
                     btn_colors=qtcPalette.defbtn;
@@ -3582,6 +3615,13 @@ debugDisplayWidget(widget, 3);
                 }
                 unsetCairoClipping(cr);
             }
+            else if(GTK_APP_OPEN_OFFICE==qtSettings.app && opts.flatSbarButtons && isFixedWidget(widget))
+            {
+                if (horiz)
+                    width--;
+                else
+                    height--;
+            }
 
             drawLightBevel(cr, style, window, state, area, NULL, x, y, width, height,
                            &qtcPalette.background[2], qtcPalette.background, sbarRound, WIDGET_TROUGH,
@@ -3701,7 +3741,6 @@ debugDisplayWidget(widget, 3);
         GtkMenuBar *mb=menuitem ? isMenubar(widget, 0) : NULL;
         gboolean   active_mb=isMozilla() || (mb ? GTK_MENU_SHELL(mb)->active : FALSE),
                    horizPbar=isHorizontalProgressbar(widget);
-        int        animShift=-PROGRESS_CHUNK_WIDTH;
 
 #ifdef QTC_GTK2_MENU_STRIPE_HACK_MENU /* This hack doesnt work! not all items are gtkImageMenuItems's
          -> and if tey are they're drawn first incorrectly :-( */
@@ -3725,15 +3764,21 @@ debugDisplayWidget(widget, 3);
 
         if(pbar && STRIPE_NONE!=opts.stripedProgress)
         {
-            GdkRectangle rect={x, y, width-2, height-2};
-            int          stripeOffset;
+            GdkRectangle              rect={x, y, width-2, height-2};
+            GtkProgressBarOrientation orientation=widget && GTK_IS_PROGRESS_BAR(widget)
+                                        ? gtk_progress_bar_get_orientation(GTK_PROGRESS_BAR(widget))
+                                        : GTK_PROGRESS_LEFT_TO_RIGHT;
+            gboolean                  revProg=GTK_PROGRESS_LEFT_TO_RIGHT!=orientation;
+            int                       animShift=revProg ? 0 : -PROGRESS_CHUNK_WIDTH,
+                                      stripeOffset;
 
             if(opts.animatedProgress && QTC_IS_PROGRESS_BAR(widget))
             {
                 if(!GTK_PROGRESS(widget)->activity_mode)
                     qtc_animation_progressbar_add((gpointer)widget);
 
-                animShift+=((int)(qtc_animation_elapsed(widget)*PROGRESS_CHUNK_WIDTH))%(PROGRESS_CHUNK_WIDTH*2);
+                animShift+=(revProg ? -1 : 1)*
+                           (((int)(qtc_animation_elapsed(widget)*PROGRESS_CHUNK_WIDTH))%(PROGRESS_CHUNK_WIDTH*2));
             }
 
             constrainRect(&rect, area);
