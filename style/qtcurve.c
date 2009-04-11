@@ -948,8 +948,15 @@ static GdkColor * getParentBgCol(GtkWidget *widget)
     if(GTK_IS_SCROLLBAR(widget))
         widget=widget->parent;
 
-    return widget && widget->parent && widget->parent->style
-               ? &(widget->parent->style->bg[widget->parent->state])
+    if(widget)
+    {
+        widget=widget->parent;
+        while(widget && GTK_IS_BOX(widget))
+            widget=widget->parent;
+    }
+
+    return widget && widget->style
+               ? &(widget->style->bg[widget->state])
                : NULL;
 }
 
@@ -2258,6 +2265,17 @@ static void drawEntryField(cairo_t *cr, GtkStyle *style, GtkStateType state,
         cairo_rectangle(cr, x+0.5, y+0.5, width-1, height-1);
         if(doEtch)
             cairo_rectangle(cr, x+1.5, y+1.5, width-2, height-3);
+        if(opts.round>ROUND_FULL)
+        {
+            if(round&CORNER_TL)
+                cairo_rectangle(cr, x+2.5, y+2.5, 1, 1);
+            if(round&CORNER_BL)
+                cairo_rectangle(cr, x+2.5, y+height-3.5, 1, 1);
+            if(round&CORNER_TR)
+                cairo_rectangle(cr, x+width-2.5, y+2.5, 1, 1);
+            if(round&CORNER_BR)
+                cairo_rectangle(cr, x+width-2.5, y+height-3.5, 1, 1);
+        }
         cairo_set_line_width(cr, 1);
         cairo_stroke(cr);
         unsetCairoClipping(cr);
@@ -2560,8 +2578,8 @@ debugDisplayWidget(widget, 3);
     }
     else if(!(GTK_APP_JAVA==qtSettings.app && widget && GTK_IS_LABEL(widget)))
     {
-        parent_class->draw_flat_box(style, window, state, shadow_type, area, widget, detail, x, y,
-                                    width, height);
+        parent_class->draw_flat_box(style, window, GTK_STATE_INSENSITIVE==state && DETAIL(QTC_PANED) ? GTK_STATE_NORMAL : state,
+                                    shadow_type, area, widget, detail, x, y, width, height);
 
         /* For SWT (e.g. eclipse) apps. For some reason these only seem to allow a ythickness of at max 2 - but
            for etching we need 3. So we fake this by drawing the 3rd lines here...*/
@@ -4120,7 +4138,8 @@ static void gtkDrawShadow(GtkStyle *style, GdkWindow *window, GtkStateType state
 
                 if(scrolledWindow)
                 {
-                    if(opts.squareScrollViews)
+                    /* See code in qt_settings.c as to isMozill part */
+                    if(opts.squareScrollViews || isMozillaWidget(widget))
                     {
                         drawBorder(cr, style, state, area, NULL, x, y, width, height,
                                    NULL, ROUNDED_NONE, BORDER_FLAT, WIDGET_SCROLLVIEW, 0);
@@ -5096,7 +5115,7 @@ static void fillTab(cairo_t *cr, GtkStyle *style, GdkWindow *window, GdkRectangl
 
 static gboolean isMozillaTab(GtkWidget *widget)
 {
-    return isMozillaWidget(widget) && GTK_IS_NOTEBOOK(widget);
+    return /*isMozillaWidget(widget) */ isFixedWidget(widget) && GTK_IS_NOTEBOOK(widget);
 }
 
 static void gtkDrawExtension(GtkStyle *style, GdkWindow *window, GtkStateType state,
@@ -6399,7 +6418,6 @@ static guint qtcurve_rc_style_parse(GtkRcStyle *rc_style, GtkSettings *settings,
     /* If we bail out due to errors, we *don't* reset the scope, so the error messaging code can make
        sense of our tokens. */
     old_scope = g_scanner_set_scope(scanner, scope_id);
-    qtSetFont(rc_style);
 
     token = g_scanner_peek_next_token(scanner);
     while(token != G_TOKEN_RIGHT_CURLY)
