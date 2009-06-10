@@ -58,6 +58,7 @@ static struct
 #include "qt_settings.c"
 #include "animation.c"
 #include "menu.c"
+#include "tab.c"
 #include "pixmaps.h"
 #include "config.h"
 #include <cairo.h>
@@ -93,13 +94,6 @@ static QtCSlider lastSlider;
 #define QTC_CAIRO_END \
     cairo_destroy(cr); \
     }
-
-/*
- * Disabled, for the moment, due to not working very well...
- *    1. Seems to mouse over for the whole toolbar
- *    2. When a toolbar is made floating, the mouse over effect does not turn "off" :-(
-#define QTC_MOUSEOVER_HANDLES
-*/
 
 #define QT_STYLE style
 #define WIDGET_TYPE_NAME(xx) (widget && !strcmp(g_type_name (G_TYPE_FROM_INSTANCE(widget)), (xx)))
@@ -174,12 +168,6 @@ static void debugDisplayWidget(GtkWidget *widget, int level)
 
 typedef struct
 {
-    int          id;
-    GdkRectangle rect;
-} QtCTab;
-
-typedef struct
-{
     GdkColor col;
     EPixmap  pix;
     double   shade;
@@ -189,10 +177,6 @@ static GtkStyleClass  *parent_class=NULL;
 static Options        opts;
 static GtkRequisition defaultOptionIndicatorSize    = { 6, 13 };
 static GtkBorder      defaultOptionIndicatorSpacing = { 7, 5, 1, 1 };
-static GHashTable     *tabHashTable                 = NULL;
-#ifdef QTC_MOUSEOVER_HANDLES
-static GHashTable     *toolbarHandleHashTable       = NULL;
-#endif
 static GCache         *pixbufCache                  = NULL;
 
 #define DETAIL(xx) ((detail) &&(!strcmp(xx, detail)))
@@ -1044,209 +1028,6 @@ static void constrainRect(GdkRectangle *rect, GdkRectangle *con)
             rect->height-=(rect->y+rect->height)-(con->y+con->height);
     }
 }
-
-static QtCTab * lookupTabHash(void *hash, gboolean create)
-{
-    QtCTab *rv=NULL;
-
-    if(!tabHashTable)
-        tabHashTable=g_hash_table_new(g_direct_hash, g_direct_equal);
-
-    rv=(QtCTab *)g_hash_table_lookup(tabHashTable, hash);
-
-    if(!rv && create)
-    {
-        rv=(QtCTab *)malloc(sizeof(QtCTab));
-        rv->id=rv->rect.x=rv->rect.y=rv->rect.width=rv->rect.height=-1;
-        g_hash_table_insert(tabHashTable, hash, rv);
-        rv=g_hash_table_lookup(tabHashTable, hash);
-    }
-
-    return rv;
-}
-
-/* This function is called whenever the mouse moves within a tab - but the whole tab widget! */
-static gboolean tabEvent(GtkWidget *widget, GdkEvent *event, gpointer user_data)
-{
-    if(GDK_MOTION_NOTIFY==event->type)
-    {
-        static int last_x=-100, last_y=-100;
-
-        if(abs(last_x-event->motion.x_root)>4 || abs(last_y-event->motion.y_root)>4)
-        {
-            last_x=event->motion.x_root;
-            last_y=event->motion.y_root;
-
-            GtkNotebook *notebook=GTK_NOTEBOOK(widget);
-
-            if(notebook)
-            {
-                /* TODO! check if mouse is over tab portion! */
-                /* Find tab that mouse is currently over...*/
-                QtCTab *prevTab=lookupTabHash(widget, TRUE),
-                       currentTab;
-                int    numChildren=g_list_length(notebook->children),
-                       i,
-                       nx, ny;
-
-                currentTab.id=currentTab.rect.x=currentTab.rect.y=
-                currentTab.rect.width=currentTab.rect.height=-1;
-                gdk_window_get_origin(GTK_WIDGET(notebook)->window, &nx, &ny);
-                for (i = 0; i < numChildren; i++ )
-                {
-                    GtkWidget *page=gtk_notebook_get_nth_page(notebook, i),
-                              *tabLabel=gtk_notebook_get_tab_label(notebook, page);
-                    int       tx=(tabLabel->allocation.x+nx)-2,
-                              ty=(tabLabel->allocation.y+ny)-2,
-                              tw=(tabLabel->allocation.width)+4,
-                              th=(tabLabel->allocation.height)+4;
-
-                    if(tx<=event->motion.x_root && ty<=event->motion.y_root &&
-                       (tx+tw)>event->motion.x_root && (ty+th)>event->motion.y_root)
-                    {
-                        currentTab.rect.x=tx-nx;
-                        currentTab.rect.y=ty-ny;
-                        currentTab.rect.width=tw;
-                        currentTab.rect.height=th;
-                        currentTab.id=i;
-                        break;
-                    }
-                }
-
-                if(currentTab.id!=prevTab->id)
-                {
-                    if(currentTab.rect.x<0)
-                    {
-                        prevTab->id=currentTab.id;
-                        prevTab->rect=currentTab.rect;
-                        gtk_widget_queue_draw(widget);
-                    }
-                    else
-                    {
-                        GdkRectangle area;
-
-                        if(prevTab->rect.x<0)
-                            area=currentTab.rect;
-                        else
-                            gdk_rectangle_union(&(prevTab->rect), &(currentTab.rect), &area);
-                        prevTab->id=currentTab.id;
-                        prevTab->rect=currentTab.rect;
-                        area.x-=12;
-                        area.y-=12;
-                        area.width+=24;
-                        area.height+=24;
-                        gtk_widget_queue_draw_area(widget, area.x, area.y, area.width, area.height);
-                    }
-                }
-            }
-        }
-    }
-    else if(GDK_LEAVE_NOTIFY==event->type)
-    {
-        QtCTab *prevTab=lookupTabHash(widget, FALSE);
-
-        if(prevTab && prevTab->id>=0)
-        {
-            prevTab->id=prevTab->rect.x=prevTab->rect.y=
-            prevTab->rect.width=prevTab->rect.height=-1;
-            gtk_widget_queue_draw(widget);
-        }
-    }
-
-    return FALSE;
-}
-
-static gboolean tabDeleteEvent(GtkWidget *widget, GdkEvent *event, gpointer user_data)
-{
-    if(lookupTabHash(widget, FALSE))
-        g_hash_table_remove(tabHashTable, widget);
-    return FALSE;
-}
-
-#ifdef QTC_MOUSEOVER_HANDLES
-static int * lookupToolbarHandleHash(void *hash, gboolean create)
-{
-    int *rv=NULL;
-
-    if(!toolbarHandleHashTable)
-        toolbarHandleHashTable=g_hash_table_new(g_direct_hash, g_direct_equal);
-
-    rv=(int *)g_hash_table_lookup(toolbarHandleHashTable, hash);
-
-    if(!rv && create)
-    {
-        rv=(int *)malloc(sizeof(int));
-        *rv=0;
-        g_hash_table_insert(toolbarHandleHashTable, hash, rv);
-        rv=g_hash_table_lookup(toolbarHandleHashTable, hash);
-    }
-
-    return rv;
-}
-
-static gboolean toolbarHandleEvent(GtkWidget *widget, GdkEvent *event, gpointer user_data)
-{
-    if(GDK_MOTION_NOTIFY==event->type)
-    {
-        int *handle=lookupToolbarHandleHash(widget, FALSE);
-
-#if 0
-        if(handle)
-        {
-            static int last_x=-100, last_y=-100;
-
-            if(abs(last_x-event->motion.x_root)>4 || abs(last_y-event->motion.y_root)>4)
-            {
-                int nx, ny;
-
-                gdk_window_get_origin(widget->window, &nx, &ny);
-                {
-                int      tx=(widget->allocation.x+nx),
-                         ty=(widget->allocation.y+ny),
-                         tw=(widget->allocation.width),
-                         th=(widget->allocation.height);
-                gboolean inHandle=(tx<=event->motion.x_root && ty<=event->motion.y_root &&
-                                    (tx+tw)>event->motion.x_root && (ty+th)>event->motion.y_root);
-
-                last_x=event->motion.x_root;
-                last_y=event->motion.y_root;
-
-                if( (inHandle && !(*handle)) || (!inHandle && *handle))
-                {
-                    *handle=!(*handle);
-                    gtk_widget_queue_draw(widget);
-                }
-                }
-            }
-        }
-#else
-        if(handle && 0==*handle)
-        {
-            *handle=1;
-            gtk_widget_queue_draw(widget);
-        }
-#endif
-    }
-    else if(GDK_LEAVE_NOTIFY==event->type)
-    {
-        int *handle=lookupToolbarHandleHash(widget, FALSE);
-        if(handle && 1==*handle)
-        {
-            *handle=0;
-            gtk_widget_queue_draw(widget);
-        }
-    }
-
-    return FALSE;
-}
-
-static gboolean toolbarHandleDeleteEvent(GtkWidget *widget, GdkEvent *event, gpointer user_data)
-{
-    if(lookupToolbarHandleHash(widget, FALSE))
-        g_hash_table_remove(toolbarHandleHashTable, widget);
-    return FALSE;
-}
-#endif
 
 static gboolean windowEvent(GtkWidget *widget, GdkEvent *event, gpointer user_data)
 {
@@ -2545,23 +2326,6 @@ debugDisplayWidget(widget, 3);
     else if((DETAIL("handlebox") && (GTK_APP_JAVA==qtSettings.app || (widget && GTK_IS_HANDLE_BOX(widget)))) ||
             DETAIL("dockitem") || paf)
     {
-#ifdef QTC_MOUSEOVER_HANDLES
-        int *handleHash=NULL;
-
-        if(opts.coloredMouseOver && !isMozilla())
-        {
-            handleHash=lookupToolbarHandleHash(widget, FALSE);
-
-            if(!handleHash)
-            {
-                lookupToolbarHandleHash(widget, TRUE); /* Create hash entry... */
-                gtk_widget_add_events(widget, GDK_LEAVE_NOTIFY_MASK|GDK_POINTER_MOTION_MASK);
-                g_signal_connect(G_OBJECT(widget), "unrealize", G_CALLBACK(toolbarHandleDeleteEvent),
-                                 widget);
-                g_signal_connect(G_OBJECT(widget), "event", G_CALLBACK(toolbarHandleEvent), widget);
-            }
-        }
-#endif
         if(widget && GTK_STATE_INSENSITIVE!=state)
             state=GTK_WIDGET_STATE(widget);
 
@@ -2574,35 +2338,27 @@ debugDisplayWidget(widget, 3);
             gtkDrawBox(style, window, state, shadow_type, area, widget, "handlebox", x, y, width,
                        height);
 
-        GdkColor *cols=
-#ifdef QTC_MOUSEOVER_HANDLES
-                    opts.coloredMouseOver && handleHash && *handleHash
-                        ? qtcPalette.mouseover :
-#endif
-
-                        qtcPalette.background;
-
         switch(opts.handles)
         {
             case LINE_NONE:
                 break;
             case LINE_DOTS:
-                drawDots(cr, x, y, width, height, height<width, 2, 5, cols, area, 2, 5);
+                drawDots(cr, x, y, width, height, height<width, 2, 5, qtcPalette.background, area, 2, 5);
                 break;
             case LINE_DASHES:
                 if(height>width)
                     drawLines(cr, x+3, y, 3, height, TRUE, (height-8)/2, 0,
-                              cols, area, 5, opts.handles);
+                              qtcPalette.background, area, 5, opts.handles);
                 else
                     drawLines(cr, x, y+3, width, 3, FALSE, (width-8)/2, 0,
-                              cols, area, 5, opts.handles);
+                              qtcPalette.background, area, 5, opts.handles);
                 break;
             case LINE_FLAT:
-                drawLines(cr, x, y, width, height, height<width, 2, 4, cols,
+                drawLines(cr, x, y, width, height, height<width, 2, 4, qtcPalette.background,
                           area, 4, opts.handles);
                 break;
             default:
-                drawLines(cr, x, y, width, height, height<width, 2, 4, cols,
+                drawLines(cr, x, y, width, height, height<width, 2, 4, qtcPalette.background,
                           area, 3, opts.handles);
         }
     }
@@ -3965,7 +3721,7 @@ debugDisplayWidget(widget, 3);
                                     : ROUNDED_ALL
                                 : ROUNDED_ALL,
                      new_state=GTK_STATE_PRELIGHT==state ? GTK_STATE_NORMAL : state;
-            gboolean stdColors=!mb || SHADE_BLEND_SELECTED!=opts.shadeMenubars;
+            gboolean stdColors=!mb || (SHADE_BLEND_SELECTED!=opts.shadeMenubars && SHADE_SELECTED!=opts.shadeMenubars);
             int      fillVal=grayItem ? 4 : ORIGINAL_SHADE,
                      borderVal=opts.borderMenuitems ? 0 : fillVal;
 
@@ -4819,9 +4575,8 @@ static void gtkDrawLayout(GtkStyle *style, GdkWindow *window, GtkStateType state
                     style->text_gc[GTK_STATE_INSENSITIVE]=qtcurveStyle->menutext_gc[0];
                     use_text=TRUE;
                 }
-                else if (SHADE_BLEND_SELECTED==opts.shadeMenubars ||
-                         (SHADE_CUSTOM==opts.shadeMenubars &&
-                          TOO_DARK(qtcPalette.menubar[ORIGINAL_SHADE])))
+                else if (SHADE_BLEND_SELECTED==opts.shadeMenubars || SHADE_SELECTED==opts.shadeMenubars || 
+                         (SHADE_CUSTOM==opts.shadeMenubars && TOO_DARK(qtcPalette.menubar[ORIGINAL_SHADE])))
                     selectedText=TRUE;
             }
         }
@@ -5316,12 +5071,7 @@ debugDisplayWidget(widget, 3);
         }
 
         if(!mozTab && GTK_APP_JAVA!=qtSettings.app && !highlightTab && highlightingEnabled)
-        {
-            lookupTabHash(widget, TRUE); /* Create hash entry... */
-            gtk_widget_add_events(widget, GDK_LEAVE_NOTIFY_MASK|GDK_POINTER_MOTION_MASK);
-            g_signal_connect(G_OBJECT(widget), "unrealize", G_CALLBACK(tabDeleteEvent), widget);
-            g_signal_connect(G_OBJECT(widget), "event", G_CALLBACK(tabEvent), widget);
-        }
+            qtcTabSetup(widget);
 
 /*
         gtk_style_apply_default_background(style, window, widget && !GTK_WIDGET_NO_WINDOW(widget),
@@ -5886,7 +5636,7 @@ debugDisplayWidget(widget, 3);
     }
     else if(DETAIL("menuitem"))
         //drawHLine(cr, QTC_CAIRO_COL(qtcPalette.background[QTC_MENU_SEP_SHADE]), 1.0, x1<x2 ? x1 : x2, y, abs(x2-x1));
-        drawFadedLine(cr, x1<x2 ? x1 : x2, y, abs(x2-x1), 1, &qtcPalette.background[QTC_MENU_SEP_SHADE],
+        drawFadedLine(cr, x1<x2 ? x1 : x2, y+1, abs(x2-x1), 1, &qtcPalette.background[QTC_MENU_SEP_SHADE],
                       area, NULL, true, true, true);
     else
         //drawHLine(cr, QTC_CAIRO_COL(qtcPalette.background[dark]), 1.0, x1<x2 ? x1 : x2, y, abs(x2-x1));
@@ -6201,6 +5951,13 @@ static void generateColors()
             memcpy(qtcPalette.menubar, qtcPalette.background, sizeof(GdkColor)*(TOTAL_SHADES+1));
             break;
         case SHADE_BLEND_SELECTED:
+        {
+            GdkColor mid=midColor(&qtcPalette.highlight[ORIGINAL_SHADE],
+                                  &qtcPalette.background[ORIGINAL_SHADE]);
+            shadeColors(&mid, qtcPalette.menubar);
+            break;
+        }    
+        case SHADE_SELECTED:
         {
             GdkColor color;
 
