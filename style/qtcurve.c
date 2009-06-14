@@ -1667,7 +1667,7 @@ static void drawLightBevel(cairo_t *cr, GtkStyle *style, GdkWindow *window, GtkS
     xd-=1, x--, yd-=1, y--, width+=2, height+=2;
     if(flags&DF_DO_BORDER && width>2 && height>2)
     {
-        GdkColor *borderCols=WIDGET_COMBO==widget && colors==qtcPalette.combobtn
+        GdkColor *borderCols=(WIDGET_COMBO==widget || WIDGET_COMBO_BUTTON==widget) && colors==qtcPalette.combobtn
                             ? GTK_STATE_PRELIGHT==state && MO_GLOW==opts.coloredMouseOver && !sunken
                                 ? &qtcPalette.mouseover
                                 : &qtcPalette.button[PAL_ACTIVE]
@@ -1675,10 +1675,17 @@ static void drawLightBevel(cairo_t *cr, GtkStyle *style, GdkWindow *window, GtkS
                             
         cairo_new_path(cr);
         /* Yuck! this is a mess!!!! */
-        if(!sunken && (doEtch || WIDGET_SB_SLIDER==widget) &&
-            ( (WIDGET_OTHER!=widget && WIDGET_SLIDER_TROUGH!=widget && WIDGET_COMBO_BUTTON!=widget &&
-                MO_GLOW==opts.coloredMouseOver && GTK_STATE_PRELIGHT==state) ||
-              (WIDGET_DEF_BUTTON==widget && IND_GLOW==opts.defBtnIndicator)))
+// Copied from KDE4 version...
+        if(!sunken && GTK_STATE_INSENSITIVE!=state &&
+            ( ( ( (doEtch && WIDGET_OTHER!=widget && WIDGET_SLIDER_TROUGH!=widget) || WIDGET_SB_SLIDER==widget || WIDGET_COMBO==widget || WIDGET_MENU_BUTTON==widget ) &&
+                 (MO_GLOW==opts.coloredMouseOver/* || MO_COLORED==opts.colorMenubarMouseOver*/) && GTK_STATE_PRELIGHT==state) ||
+               (doEtch && WIDGET_DEF_BUTTON==widget && IND_GLOW==opts.defBtnIndicator)))
+
+// Previous Gtk2...        
+//         if(!sunken && (doEtch || WIDGET_SB_SLIDER==widget) &&
+//             ( (WIDGET_OTHER!=widget && WIDGET_SLIDER_TROUGH!=widget && WIDGET_COMBO_BUTTON!=widget &&
+//                 MO_GLOW==opts.coloredMouseOver && GTK_STATE_PRELIGHT==state) ||
+//               (WIDGET_DEF_BUTTON==widget && IND_GLOW==opts.defBtnIndicator)))
             drawBorder(cr, style, state, area, region, x, y, width, height,
                        WIDGET_DEF_BUTTON==widget && IND_GLOW==opts.defBtnIndicator &&
                        (GTK_STATE_PRELIGHT!=state || !qtcPalette.mouseover)
@@ -2982,7 +2989,7 @@ debugDisplayWidget(widget, 3);
                         atEnd=TRUE;
                     }
 
-                    if(widget && lastSlider.widget==widget && !atEnd)
+                    if(!isMozilla() && widget && lastSlider.widget==widget && !atEnd)
                         lastSlider.widget=NULL;
                 }
 #endif
@@ -3031,7 +3038,7 @@ debugDisplayWidget(widget, 3);
                    overlaps (by 1 pixel) the buttons, then the top/bottom is vut off if this is shaded...
                    So, work-around this by re-drawing the slider here! */
                 if(!opts.flatSbarButtons && SHADE_NONE!=opts.shadeSliders && SCROLLBAR_NONE!=opts.scrollbarType &&
-                   WIDGET_SB_BUTTON==widgetType && widget && widget==lastSlider.widget &&
+                   WIDGET_SB_BUTTON==widgetType && widget && widget==lastSlider.widget && !isMozilla() &&
                    ( (SCROLLBAR_NEXT==opts.scrollbarType && QTC_STEPPER_B==stepper) || QTC_STEPPER_D==stepper))
                 {
                     gtkDrawSlider(lastSlider.style, lastSlider.window, lastSlider.state,
@@ -5353,7 +5360,7 @@ static void gtkDrawSlider(GtkStyle *style, GdkWindow *window, GtkStateType state
     if(scrollbar || !(SLIDER_TRIANGULAR==opts.sliderStyle ||
        ((SLIDER_ROUND==opts.sliderStyle || SLIDER_ROUND_ROTATED==opts.sliderStyle) && QTC_FULLLY_ROUNDED)))
     {
-        if(!opts.flatSbarButtons && SHADE_NONE!=opts.shadeSliders && SCROLLBAR_NONE!=opts.scrollbarType)
+        if(!opts.flatSbarButtons && SHADE_NONE!=opts.shadeSliders && SCROLLBAR_NONE!=opts.scrollbarType && !isMozilla())
         {
             lastSlider.style=style;
             lastSlider.window=window;
