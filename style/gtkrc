@@ -32,7 +32,7 @@ style "qtcurve-default"
   GtkTreeView::row-ending-details = 1
   GtkMenu::vertical-padding = 0
   GtkMenu::horizontal-offset = -2
-  GtkMenu::vertical-offset = 0
+  GtkMenu::vertical-offset = 1
 
   xthickness = 1
   ythickness = 1
@@ -96,6 +96,24 @@ style "qtcurve-w2" = "qtcurve-default"
   ythickness = 2
 }
 
+style "qtcurve-entry" = "qtcurve-default"
+{
+  xthickness = 4
+  ythickness = 4
+  GtkWidget::interior-focus = 0
+  GtkWidget::focus-line-width = 0
+  GtkEntry::inner-border = { 0, 0, 0, 0}
+}
+
+style "qtcurve-range" = "qtcurve-default"
+{
+  xthickness = 4
+  ythickness = 4
+  GtkWidget::interior-focus = 0
+  GtkWidget::focus-line-width = 0
+  GtkEntry::inner-border = { 0, 0, 0, 0}
+}
+
 style "qtcurve-tasklist" = "qtcurve-default"
 {
   xthickness = 5
@@ -106,6 +124,13 @@ style "qtcurve-menuitem" = "qtcurve-default"
 {
   xthickness = 1
   ythickness = 3
+
+  GtkMenuItem::horizontal-padding = 1
+  # We are setting the desired height by using wide-separators
+  # There is no other way to get the odd height ...
+  GtkMenuItem::wide-separators = 1
+  GtkMenuItem::separator-width = 1
+  GtkMenuItem::separator-height = 1
 }
 
 style "qtcurve-menubar" = "qtcurve-default"
@@ -119,6 +144,7 @@ style "qtcurve-menubar" = "qtcurve-default"
 
 style "qtcurve-menubaritem" = "qtcurve-default"
 {
+  GtkMenuItem::horizontal-padding = 5
   xthickness = 2
   ythickness = 2
 }
@@ -132,7 +158,7 @@ style "qtcurve-swt-combo" = "qtcurve-default"
 style "qtcurve-combo" = "qtcurve-default"
 {
   xthickness = 4
-  ythickness = 3
+  ythickness = 4
 }
 
 style "qtcurve-combo-button" = "qtcurve-default"
@@ -141,16 +167,12 @@ style "qtcurve-combo-button" = "qtcurve-default"
   ythickness = 1
 }
 
-style "qtcurve-separator" = "qtcurve-default"
+style "qtcurve-separator" = "qtcurve-menuitem"
 {
-  GtkMenuItem::horizontal-padding = 1
-  # We are setting the desired height by using wide-separators
-  # There is no other way to get the odd height ...
-  GtkWidget::wide-separators = 1
-  GtkWidget::separator-width = 1
-  GtkWidget::separator-height = 4
-  xthickness = 1
   ythickness = 1
+  GtkMenuItem::wide-separators = 1
+  GtkMenuItem::separator-width = 1
+  GtkMenuItem::separator-height = 4
 }
 
 style "qtcurve-w0" = "qtcurve-default"
@@ -183,18 +205,17 @@ class "*GtkScrolledWindow" style "qtcurve-w2"
 class "*GtkViewport" style "qtcurve-w2"
 class "*MenuBar" style "qtcurve-menubar"
 class "*MenuItem" style "qtcurve-menuitem"
-widget_class "*MenuBar*MenuItem" style "qtcurve-menubaritem"
 class "*GtkFrame" style "qtcurve-w2"
 class "*GtkStatusbar" style "qtcurve-default"
 class "*GtkRadioButton" style "qtcurve-default"
 class "*GtkCheckButton" style "qtcurve-default"
-class "*GtkSpinButton" style "qtcurve-w2"
+class "*GtkSpinButton" style "qtcurve-range"
 widget_class "*.GtkMenuItem.*" style "qtcurve-default"
 widget_class "*.GtkAccelMenuItem.*" style "qtcurve-default"
 widget_class "*.GtkRadioMenuItem.*" style "qtcurve-default"
 widget_class "*.GtkCheckMenuItem.*" style "qtcurve-default"
 widget_class "*.GtkImageMenuItem.*" style "qtcurve-default"
-class "*GtkEntry" style "qtcurve-w2"
+class "*GtkEntry" style "qtcurve-entry"
 widget_class "*.tooltips.*.GtkToggleButton" style "qtcurve-tasklist"
 widget_class "*Tree*GtkButton" style "qtcurve-header"
 widget_class "*List*GtkButton" style "qtcurve-header"
@@ -206,12 +227,12 @@ widget_class "*HandleBox*SPButton" style "qtcurve-sptoolbarbutton"
 widget_class "*.GtkCombo.GtkEntry" style "qtcurve-combo"
 widget_class "*.GtkCombo.GtkButton" style "qtcurve-combo-button"
 widget_class "*.SwtFixed.GtkCombo.GtkButton" style "qtcurve-swt-combo"
-widget_class "*.SwtFixed.GtkCombo.GtkEntry" style "qtcurve-swt-combo"
-widget_class "*Toolbar*Entry" style "qtcurve-w2"
+widget_class "*.SwtFixed.GtkCombo.GtkEntry" style "qtcurve-entry"
+widget_class "*Toolbar*Entry" style "qtcurve-entry"
 class "GtkComboBoxEntry" style "qtcurve-w0"
 widget_class "*.GtkComboBoxEntry.*Button" style "qtcurve-w0"
 widget_class "*PathBar.*Button" style "qtcurve-pathbutton"
 class "*SeparatorMenuItem" style "qtcurve-separator"
 widget_class "*.GtkSeparatorMenuItem.*" style "qtcurve-separator"
-#widget_class "*.*Notebook.*GtkButton" style "qtcurve-tabbutton"
-#widget_class "*.*Notebook.*Box.*GtkButton" style "qtcurve-tabbutton"
+widget_class "*.GeditNotebook.GtkHBox.GtkButton" style "qtcurve-tabbutton"
+widget_class "*MenuBar*MenuItem" style "qtcurve-menubaritem"
