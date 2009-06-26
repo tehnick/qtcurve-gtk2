@@ -175,6 +175,10 @@ struct QtData
     EGtkApp         app;
     gboolean        qt4,
                     inactiveChangeSelectionColor;
+#ifdef QTC_FIX_FIREFOX_LOCATION_BAR
+    gboolean        isBrowser;
+    int             fontSize;
+#endif
 };
 
 #include <gmodule.h>
@@ -706,6 +710,11 @@ static void setFont(QtFontDetails *font, int f)
             weightStr(font->weight),
             italicStr(font->italic),
             (int)font->size);
+
+#ifdef QTC_FIX_FIREFOX_LOCATION_BAR
+    if(FONT_GENERAL==f)
+        qtSettings.fontSize=(int)(font->size);
+#endif
 
     /* Qt uses a bold font for progressbars, try to mimic this... */
     if(FONT_GENERAL==f && font->weight>=WEIGHT_NORMAL && font->weight<WEIGHT_DEMIBOLD)
@@ -2052,6 +2061,9 @@ static gboolean qtInit()
                          mozThunderbird=!thunderbird && !firefox && isMozApp(app, "mozilla-thunderbird"),
                          seamonkey=!thunderbird && !firefox && !mozThunderbird && isMozApp(app, "seamonkey");
 
+#ifdef QTC_FIX_FIREFOX_LOCATION_BAR
+                qtSettings.isBrowser=firefox;
+#endif
                 if(firefox || thunderbird || mozThunderbird || seamonkey)
                 {
                     int mozVersion=getMozillaVersion(getpid());
@@ -2105,6 +2117,9 @@ static gboolean qtInit()
             /* Eclipse sets a application name, so if this is set then we're not a Swing java app */
             /*if(GTK_APP_JAVA==qtSettings.app && g_get_application_name() && 0!=strcmp(g_get_application_name(), "<unknown>"))
                 qtSettings.app=GTK_APP_JAVA_SWT;*/
+
+            if(GTK_APP_JAVA==qtSettings.app || isMozilla() || GTK_APP_OPEN_OFFICE==qtSettings.app)
+                opts.bgndAppearance=APPEARANCE_FLAT;
 
             /*if(isMozilla() || GTK_APP_JAVA==qtSettings.app)*/
             if(GTK_APP_JAVA!=qtSettings.app)
@@ -2174,7 +2189,7 @@ static gboolean qtInit()
 
             /* Tear off menu items dont seem to draw they're background, and the default background
                is drawn :-(  Fix/hack this by making that background the correct color */
-            if(opts.lighterPopupMenuBgnd>1)
+            if(USE_LIGHTER_POPUP_MENU)
             {
                 static const char *format="style \""QTC_RC_SETTING"Mnu\" "
                                           "{bg[NORMAL]=\"#%02X%02X%02X\"} "
@@ -2529,7 +2544,7 @@ static gboolean qtInit()
             if(!opts.popupBorder)
                 gtk_rc_parse_string("style \""QTC_RC_SETTING"M\" { xthickness=0 ythickness=0 }\n"
                                     "class \"*GtkMenu\" style \""QTC_RC_SETTING"M\"");
-            else if(opts.lighterPopupMenuBgnd && !opts.borderMenuitems)
+            else if((USE_LIGHTER_POPUP_MENU || !IS_FLAT(opts.menuBgndAppearance)) && !opts.borderMenuitems)
                 gtk_rc_parse_string("style \""QTC_RC_SETTING"M\" { xthickness=1 ythickness=1 }\n"
                                     "class \"*GtkMenu\" style \""QTC_RC_SETTING"M\"");
 

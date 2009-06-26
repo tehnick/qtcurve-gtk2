@@ -835,7 +835,7 @@ static gboolean isComboMenu(GtkWidget *widget)
         GtkWidget *top=gtk_widget_get_toplevel(widget);
 
         return top && (isComboBoxPopupWindow(GTK_BIN(top)->child, 0) ||
-                       GTK_IS_DIALOG(top) || /* Dialogs should not have menus! */
+                       //GTK_IS_DIALOG(top) || /* Dialogs should not have menus! */
                        (GTK_IS_WINDOW(top) && GTK_WINDOW(top)->transient_parent &&
                         GTK_BIN(GTK_WINDOW(top)->transient_parent)->child &&
                         isComboMenu(GTK_BIN(GTK_WINDOW(top)->transient_parent)->child)));
@@ -873,6 +873,22 @@ static gboolean isFixedWidget(GtkWidget *widget)
 {
     return widget && widget->parent && widget->parent->parent &&
            GTK_IS_FIXED(widget->parent) && GTK_IS_WINDOW(widget->parent->parent);
+}
+
+static gboolean isGimpDockable(GtkWidget *widget)
+{
+    if(GTK_APP_GIMP==qtSettings.app)
+    {
+        GtkWidget *wid=widget;
+        while(wid)
+        {
+            if(0==strcmp(gtk_type_name(GTK_WIDGET_TYPE(wid)), "GimpDockable") ||
+               0==strcmp(gtk_type_name(GTK_WIDGET_TYPE(wid)), "GimpToolbox"))
+                return TRUE;
+            wid=wid->parent;
+        }
+    }
+    return FALSE;
 }
 
 #define isMozillaWidget(widget) (isMozilla() && isFixedWidget(widget))
@@ -1948,19 +1964,23 @@ void getEntryParentBgCol(const GtkWidget *widget, GdkColor *color)
 static gboolean drawBgndGradient(cairo_t *cr, GtkStyle *style, GdkRectangle *area, GtkWidget *widget,
                                  gint x, gint y, gint width, gint height)
 {
-    if(!isFixedWidget(widget))
+    if(!isFixedWidget(widget) && !isGimpDockable(widget))
     {
         GtkWidget *window=widget;
         int       yo=0;
 
+#ifdef QTC_DEBUG
+printf("Draw bgnd grad box %d %d %d %d  ", x, y, width, height);
+debugDisplayWidget(widget, 20);
+#endif
         while(window && !GTK_IS_WINDOW(window))
         {
-            if(!GTK_WIDGET_NO_WINDOW(window))
+            if(!GTK_WIDGET_NO_WINDOW(window) && 0==yo)
                 yo+=widget->allocation.y;
             window=window->parent;
         }
 
-        if(window)
+        if(window && (!window->name || strcmp(window->name, "gtk-tooltip")))
         {
             drawBevelGradient(cr, style, area, NULL, x, -yo, width, window->allocation.height,
                               &style->bg[GTK_STATE_NORMAL], GT_HORIZ==opts.bgndGrad, FALSE, opts.bgndAppearance, WIDGET_OTHER);
@@ -1984,6 +2004,7 @@ static void drawEntryField(cairo_t *cr, GtkStyle *style, GtkStateType state,
                         : highlightReal
                             ? qtcPalette.focus
                             : qtcPalette.background;
+    int      origHeight=height;
 
     if(GTK_APP_JAVA!=qtSettings.app)
         qtcEntrySetup(widget);
@@ -2026,6 +2047,7 @@ static void drawEntryField(cairo_t *cr, GtkStyle *style, GtkStateType state,
 printf("Draw entry_field %d %d %d %d %d %d ", state, x, y, width, height, round);
 debugDisplayWidget(widget, 3);
 #endif
+
     if(ROUNDED_ALL!=round)
     {
         if(WIDGET_SPIN==w || WIDGET_COMBO_BUTTON==w)
@@ -2077,6 +2099,22 @@ debugDisplayWidget(widget, 3);
         drawEtch(cr, region ? NULL : area, region, widget, x, y, width, height, FALSE, round, WIDGET_ENTRY);
         gdk_region_destroy(region);
     }
+
+#ifdef QTC_FIX_FIREFOX_LOCATION_BAR
+    if(qtSettings.isBrowser && isMozilla() && WIDGET_ENTRY==w && widget && 28==origHeight && qtSettings.fontSize<=12)
+    {
+        gboolean search=GTK_IS_ENTRY(widget) && isFixedWidget(widget),
+                 location=!search && widget->parent && GTK_IS_COMBO_BOX_ENTRY(widget->parent) && isFixedWidget(widget->parent);
+
+        if(search || location)
+        {
+            cairo_new_path(cr);
+            cairo_rectangle(cr, xo+2.5, yo+2.5, search ? 39 : 25, heighto-5);
+            cairo_set_source_rgb(cr, QTC_CAIRO_COL(style->bg[GTK_STATE_NORMAL]));
+            cairo_stroke(cr);
+        }
+    }
+#endif
 
     drawBorder(cr, style, !widget || GTK_WIDGET_IS_SENSITIVE(widget) ? state : GTK_STATE_INSENSITIVE, area, NULL, xo, yo, widtho, heighto,
                colors, round, BORDER_SUNKEN, WIDGET_ENTRY, DF_DO_CORNERS|DF_BLEND);
@@ -2307,8 +2345,9 @@ debugDisplayWidget(widget, 3);
     else if( ( GTK_STATE_PRELIGHT==state && (detail && (0==strcmp(detail, QTC_PANED) || 0==strcmp(detail, "expander") ||
                                                   (opts.crHighlight && 0==strcmp(detail, "checkbutton")))) ) )
         drawAreaMod(cr, style, GTK_STATE_PRELIGHT, area, NULL, QTC_TO_FACTOR(opts.highlightFactor), x, y, width, height);
-    else if(!IS_FLAT(opts.bgndAppearance) && GTK_STATE_PRELIGHT!=state &&
-            ( detail && (0==strcmp(detail, QTC_PANED) || 0==strcmp(detail, "expander") || 0==strcmp(detail, "checkbutton"))))
+    else if(!IS_FLAT(opts.bgndAppearance) && detail && 
+            ( (GTK_STATE_PRELIGHT==state && !opts.crHighlight && 0==strcmp(detail, "checkbutton")) ||
+              (GTK_STATE_PRELIGHT!=state && ( 0==strcmp(detail, QTC_PANED) || 0==strcmp(detail, "expander") || 0==strcmp(detail, "checkbutton")))))
         ;
     else if(DETAIL("tooltip"))
     {
@@ -3917,12 +3956,13 @@ debugDisplayWidget(widget, 3);
 
         if(opts.menuStripe && opts.gtkMenuStripe && !isComboMenu(widget))
         {
-            int stripeWidth=GTK_APP_OPEN_OFFICE==qtSettings.app ? 22 : 17;
+            gboolean mozOo=GTK_APP_OPEN_OFFICE==qtSettings.app || isMozilla();
+            int stripeWidth=mozOo ? 22 : 21;
 
             // To determine stripe size, we iterate over all menuitems of this menu. If we find a GtkImageMenuItem then
             // we can a width of 20. However, we need to check that at least one enttry actually has an image! So, if
             // the first GtkImageMenuItem has an image then we're ok, otherwise we give it a blank pixmap.
-            if(GTK_APP_OPEN_OFFICE!=qtSettings.app && widget && !isMozilla())
+            if(!mozOo && widget)
             {
                 GtkMenuShell *menuShell=GTK_MENU_SHELL(widget);
                 GList        *children=menuShell->children;
@@ -3932,7 +3972,7 @@ debugDisplayWidget(widget, 3);
                     if(GTK_IS_IMAGE_MENU_ITEM(children->data))
                     {
                         GtkImageMenuItem *item=GTK_IMAGE_MENU_ITEM(children->data);
-                        stripeWidth=20;
+                        stripeWidth=21;
 
                         if(0L==gtk_image_menu_item_get_image(item) ||
                            (GTK_IS_IMAGE(gtk_image_menu_item_get_image(item)) &&
@@ -3955,7 +3995,7 @@ debugDisplayWidget(widget, 3);
                 }
             }
 
-            drawBevelGradient(cr, style, area, NULL, x+2, y+2, stripeWidth, height-4,
+            drawBevelGradient(cr, style, area, NULL, x+1, y+1, stripeWidth+1, height-2,
                               &opts.customMenuStripeColor, FALSE, FALSE, opts.menuStripeAppearance, WIDGET_OTHER);
         }
 
@@ -3983,7 +4023,13 @@ debugDisplayWidget(widget, 3);
             drawAreaColor(cr, area, NULL, &style->bg[state], x, y, width, height);
     }
     else if(DETAIL("hseparator"))
-        drawFadedLine(cr, x+1, y+(height>>1), width-1, 1, &qtcPalette.background[QT_STD_BORDER], area, NULL, TRUE, TRUE, TRUE);
+    {
+        int offset=opts.gtkMenuStripe && (isMozilla() || (widget && GTK_IS_MENU_ITEM(widget))) ? 20 : 0;
+        if(offset && (GTK_APP_OPEN_OFFICE==qtSettings.app || isMozilla()))
+            offset+=2;
+        drawFadedLine(cr, x+1+offset, y+(height>>1), width-(1+offset), 1, &qtcPalette.background[QT_STD_BORDER], area, NULL,
+                      TRUE, TRUE, TRUE);
+    }
     else if(DETAIL("vseparator"))
         drawFadedLine(cr, x+(width>>1), y, 1, height, &qtcPalette.background[QT_STD_BORDER], area, NULL, TRUE, TRUE, FALSE);
     else
@@ -4390,7 +4436,7 @@ debugDisplayWidget(widget, 3);
                                         : &style->base[GTK_STATE_NORMAL];
 
         if(mnu)
-            x--, y--, width=QTC_CHECK_SIZE, height=QTC_CHECK_SIZE;
+            y++, width=QTC_CHECK_SIZE, height=QTC_CHECK_SIZE;
         /*else if(list)
             y++, width=QTC_CHECK_SIZE, height=QTC_CHECK_SIZE;*/
 
@@ -4532,6 +4578,9 @@ static void gtkDrawOption(GtkStyle *style, GdkWindow *window, GtkStateType state
 
 //         if(mnu)
 //             y++;
+
+        if(mnu)
+            y+=2;
 
         {
             GdkColor  new_colors[TOTAL_SHADES+1],
@@ -4690,8 +4739,8 @@ static void gtkDrawLayout(GtkStyle *style, GdkWindow *window, GtkStateType state
                                   (opts.colorMenubarMouseOver
                                       ? GTK_STATE_PRELIGHT==state
                                       : ((!mb || activeMb) && GTK_STATE_PRELIGHT==state)),
-                     but=FALSE,
                      def_but=FALSE,
+                     but=isOnButton(widget, 0, &def_but),
                      swap_gc=FALSE;
         GdkRectangle area2;
 
@@ -4707,7 +4756,7 @@ static void gtkDrawLayout(GtkStyle *style, GdkWindow *window, GtkStateType state
         int      i=0;
 
 #ifdef QTC_DEBUG
-        printf("Draw layout %s %d %d %d %s  ", pango_layout_get_text(layout), state, use_text,
+        printf("Draw layout %s %d %d %d %d %d %s  ", pango_layout_get_text(layout), x, y, state, use_text,
                 QTC_IS_MENU_ITEM(widget), detail ? detail : "NULL");
         debugDisplayWidget(widget, 3);
 #endif
@@ -4734,7 +4783,10 @@ static void gtkDrawLayout(GtkStyle *style, GdkWindow *window, GtkStateType state
         if(!isMenuItem && GTK_STATE_PRELIGHT==state)
             state=GTK_STATE_NORMAL;
 
-        but=isOnButton(widget, 0, &def_but) || isOnComboBox(widget, 0);
+        if(but && widget && 0==widget->allocation.height%2)
+            y++;
+        
+        but= but || isOnComboBox(widget, 0);
 
         if(isOnListViewHeader(widget, 0))
             y--;
@@ -5841,9 +5893,16 @@ debugDisplayWidget(widget, 3);
                       area, NULL, true, true, true);
     }
     else if(DETAIL("menuitem") || (widget && DETAIL("hseparator") && QTC_IS_MENU_ITEM(widget)))
+    {
+        int offset=opts.gtkMenuStripe && (isMozilla() || (widget && GTK_IS_MENU_ITEM(widget))) ? 20 : 0;
+
+        if(offset && (GTK_APP_OPEN_OFFICE==qtSettings.app || isMozilla()))
+            offset+=2;
+
         //drawHLine(cr, QTC_CAIRO_COL(qtcPalette.background[QTC_MENU_SEP_SHADE]), 1.0, x1<x2 ? x1 : x2, y, abs(x2-x1));
-        drawFadedLine(cr, x1<x2 ? x1 : x2, y+1, abs(x2-x1), 1, &qtcPalette.background[QTC_MENU_SEP_SHADE],
+        drawFadedLine(cr, offset+(x1<x2 ? x1 : x2), y+1, abs(x2-x1)-offset, 1, &qtcPalette.background[QTC_MENU_SEP_SHADE],
                       area, NULL, true, true, true);
+    }
     else
         //drawHLine(cr, QTC_CAIRO_COL(qtcPalette.background[dark]), 1.0, x1<x2 ? x1 : x2, y, abs(x2-x1));
         drawFadedLine(cr, x1<x2 ? x1 : x2, y, abs(x2-x1), 1, &qtcPalette.background[dark],
@@ -6310,8 +6369,12 @@ static void generateColors()
     {
         default:
         case SHADE_NONE:
+            opts.customMenuStripeColor=qtcPalette.background[ORIGINAL_SHADE];
+            break;
         case SHADE_DARKEN:
-            opts.customMenuStripeColor=qtcPalette.menu;
+            opts.customMenuStripeColor=USE_LIGHTER_POPUP_MENU
+                ? qtcPalette.menu
+                : qtcPalette.background[QTC_MENU_STRIPE_SHADE];
             break;
         case SHADE_CUSTOM:
             break;

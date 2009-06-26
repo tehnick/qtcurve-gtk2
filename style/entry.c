@@ -1,7 +1,11 @@
 #define QTC_GE_IS_ENTRY(object) ((object) && objectIsA((GObject*)(object), "GtkEntry"))
 
+static GtkWidget *lastMoEntry=NULL;
+
 static void qtcEntryCleanup(GtkWidget *widget)
 {
+    if(lastMoEntry==widget)
+        lastMoEntry=NULL;
     if (QTC_GE_IS_ENTRY(widget))
     {
         g_signal_handler_disconnect(G_OBJECT(widget),
@@ -11,8 +15,10 @@ static void qtcEntryCleanup(GtkWidget *widget)
         g_signal_handler_disconnect(G_OBJECT(widget),
                                     (gint)g_object_steal_data(G_OBJECT(widget), "QTC_ENTRY_DESTROY_ID"));
         g_signal_handler_disconnect(G_OBJECT(widget),
+                                    (gint)g_object_steal_data(G_OBJECT(widget), "QTC_ENTRY_UNREALIZE_ID"));
+        g_signal_handler_disconnect(G_OBJECT(widget),
                                     (gint)g_object_steal_data(G_OBJECT(widget), "QTC_ENTRY_STYLE_SET_ID"));
-      g_object_steal_data(G_OBJECT(widget), "QTC_ENTRY_HACK_SET");
+        g_object_steal_data(G_OBJECT(widget), "QTC_ENTRY_HACK_SET");
     }
 }
 
@@ -27,8 +33,6 @@ static gboolean qtcEntryDestroy(GtkWidget *widget, GdkEvent *event, gpointer use
     qtcEntryCleanup(widget);
     return FALSE;
 }
-
-static GtkWidget *lastMoEntry=NULL;
 
 static gboolean qtcEntryEnter(GtkWidget *widget, GdkEventCrossing *event, gpointer user_data)
 {
@@ -65,6 +69,9 @@ static void qtcEntrySetup(GtkWidget *widget)
                                                      (GtkSignalFunc)qtcEntryLeave, NULL));
         g_object_set_data(G_OBJECT(widget), "QTC_ENTRY_DESTROY_ID",
                           (gpointer)g_signal_connect(G_OBJECT(widget), "destroy-event",
+                                                     (GtkSignalFunc)qtcEntryDestroy, NULL));
+        g_object_set_data(G_OBJECT(widget), "QTC_ENTRY_UNREALIZE_ID",
+                          (gpointer)g_signal_connect(G_OBJECT(widget), "unrealize",
                                                      (GtkSignalFunc)qtcEntryDestroy, NULL));
         g_object_set_data(G_OBJECT(widget), "QTC_ENTRY_STYLE_SET_ID",
                           (gpointer)g_signal_connect(G_OBJECT(widget), "style-set",
