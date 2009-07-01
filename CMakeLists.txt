@@ -8,7 +8,7 @@ set(DEBIAN_PACKAGE_SECTION "gtk")
 set(CPACK_SOURCE_GENERATOR "TBZ2")
 set(CPACK_PACKAGE_VERSION_MAJOR "0")
 set(CPACK_PACKAGE_VERSION_MINOR "65")
-set(CPACK_PACKAGE_VERSION_PATCH "1")
+set(CPACK_PACKAGE_VERSION_PATCH "2")
 set(CPACK_PACKAGE_CONTACT "Craig Drummond <craig_p_drummond@yahoo.co.uk>")
 set(QTCURVE_VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}")
 set(QTCURVE_VERSION_FULL "${QTCURVE_VERSION}.${CPACK_PACKAGE_VERSION_PATCH}")
@@ -126,16 +126,6 @@ if (GTK_INCLUDE_DIR)
                 "             KDE_SESSION_VERSION is not set\n"
                 "**************************************************************\n")
     endif(QTC_DEFAULT_TO_KDE3)
-    if(QTC_FIX_FIREFOX_LOCATION_BAR)
-        message("\n**************************************************************\n"
-                "**************************************************************\n"
-                "Warning: You have enabled the option for QtCurve to attempt to\n"
-                "         improve the look for Firefox's location and seatch entry\n"
-                "         fields. Note: This may also have side-effects on other\n"
-                "         entry fields in firefox.\n"
-                "**************************************************************\n"
-                "**************************************************************\n")
-    endif(QTC_FIX_FIREFOX_LOCATION_BAR)
     if(QTC_MODIFY_MOZILLA)
         message("\n**************************************************************\n"
                 "**************************************************************\n"

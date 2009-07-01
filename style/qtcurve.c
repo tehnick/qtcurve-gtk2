@@ -1375,9 +1375,6 @@ static void realDrawBorder(cairo_t *cr, GtkStyle *style, GtkStateType state, Gdk
     if(ROUND_NONE==opts.round)
         round=ROUNDED_NONE;
 
-    width--;
-    height--;
-
     {
     double       radius=getRadius(&opts, width, height, widget, RADIUS_EXTERNAL),
                  xd=x+0.5,
@@ -1395,6 +1392,8 @@ static void realDrawBorder(cairo_t *cr, GtkStyle *style, GtkStateType state, Gdk
                                     : borderVal;
     GdkColor     *border_col= useText ? &style->text[GTK_STATE_NORMAL] : &colors[useBorderVal];
 
+    width--;
+    height--;
 
     setCairoClipping(cr, area, region);
 
@@ -2100,22 +2099,6 @@ debugDisplayWidget(widget, 3);
         gdk_region_destroy(region);
     }
 
-#ifdef QTC_FIX_FIREFOX_LOCATION_BAR
-    if(qtSettings.isBrowser && isMozilla() && WIDGET_ENTRY==w && widget && 28==origHeight && qtSettings.fontSize<=12)
-    {
-        gboolean search=GTK_IS_ENTRY(widget) && isFixedWidget(widget),
-                 location=!search && widget->parent && GTK_IS_COMBO_BOX_ENTRY(widget->parent) && isFixedWidget(widget->parent);
-
-        if(search || location)
-        {
-            cairo_new_path(cr);
-            cairo_rectangle(cr, xo+2.5, yo+2.5, search ? 39 : 25, heighto-5);
-            cairo_set_source_rgb(cr, QTC_CAIRO_COL(style->bg[GTK_STATE_NORMAL]));
-            cairo_stroke(cr);
-        }
-    }
-#endif
-
     drawBorder(cr, style, !widget || GTK_WIDGET_IS_SENSITIVE(widget) ? state : GTK_STATE_INSENSITIVE, area, NULL, xo, yo, widtho, heighto,
                colors, round, BORDER_SUNKEN, WIDGET_ENTRY, DF_DO_CORNERS|DF_BLEND);
     }
@@ -2609,7 +2592,8 @@ debugDisplayWidget(widget, 3);
                  a_width=LARGE_ARR_WIDTH,
                  a_height=LARGE_ARR_HEIGHT;
         gboolean sbar=detail && ( 0==strcmp(detail, "hscrollbar") || 0==strcmp(detail, "vscrollbar") ||
-                                  0==strcmp(detail, "stepper"));
+                                  0==strcmp(detail, "stepper")),
+                 smallArrows=isSpinButton && !opts.unifySpin;
         int      stepper=sbar ? getStepper(widget, x, y, opts.sliderWidth, opts.sliderWidth) : QTC_STEPPER_NONE;
 
 /*
@@ -2645,11 +2629,13 @@ debugDisplayWidget(widget, 3);
         {
             a_width = LARGE_ARR_HEIGHT;
             a_height = LARGE_ARR_WIDTH;
+
+            if(isMozilla() && opts.vArrows && a_height && height<a_height)
+                smallArrows=true;
         }
 
         x+=width>>1;
         y+=height>>1;
-
 /*
     CPD 28/02/2008 Commented out as it messes up scrollbar button look
 
@@ -2703,7 +2689,7 @@ debugDisplayWidget(widget, 3);
                         ? &qtSettings.colors[GTK_STATE_INSENSITIVE==state ? PAL_DISABLED : PAL_ACTIVE][COLOR_BUTTON_TEXT]
                         : &style->text[QTC_IS_MENU_ITEM(widget) && GTK_STATE_PRELIGHT==state
                                         ? GTK_STATE_SELECTED : QTC_ARROW_STATE(state)];
-        drawArrow(cr, QTC_MO_ARROW(isMenuItem, col), area, arrow_type, x, y, isSpinButton && !opts.unifySpin, TRUE);
+        drawArrow(cr, QTC_MO_ARROW(isMenuItem, col), area, arrow_type, x, y, smallArrows, TRUE);
         }
     }
     QTC_CAIRO_END
