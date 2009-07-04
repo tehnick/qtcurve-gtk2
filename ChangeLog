@@ -1,3 +1,14 @@
+0.65.3
+------
+1. When not using button-like check/radio boxes, use view text as the
+   indicator color.
+2. Fix slight tab glitches when using glow tab mouse over and square
+   tabs.
+3. Fix background of some widgets when using "left to right" background
+   gradients.
+4. Fix backgrounds of entry field when etching, but not rounded.
+5. Dont draw frame for entry fields within list/trees.
+
 0.65.2
 ------
 1. If there is not enough space for large arrows in FireFox's menuitems,

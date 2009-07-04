@@ -1966,7 +1966,7 @@ static gboolean drawBgndGradient(cairo_t *cr, GtkStyle *style, GdkRectangle *are
     if(!isFixedWidget(widget) && !isGimpDockable(widget))
     {
         GtkWidget *window=widget;
-        int       yo=0;
+        int       pos=0;
 
 #ifdef QTC_DEBUG
 printf("Draw bgnd grad box %d %d %d %d  ", x, y, width, height);
@@ -1974,15 +1974,19 @@ debugDisplayWidget(widget, 20);
 #endif
         while(window && !GTK_IS_WINDOW(window))
         {
-            if(!GTK_WIDGET_NO_WINDOW(window) && 0==yo)
-                yo+=widget->allocation.y;
+            if(!GTK_WIDGET_NO_WINDOW(window) && 0==pos)
+                pos+=(GT_HORIZ==opts.bgndGrad ? widget->allocation.y : widget->allocation.x);
             window=window->parent;
         }
 
         if(window && (!window->name || strcmp(window->name, "gtk-tooltip")))
         {
-            drawBevelGradient(cr, style, area, NULL, x, -yo, width, window->allocation.height,
-                              &style->bg[GTK_STATE_NORMAL], GT_HORIZ==opts.bgndGrad, FALSE, opts.bgndAppearance, WIDGET_OTHER);
+            if(GT_HORIZ==opts.bgndGrad)
+                drawBevelGradient(cr, style, area, NULL, x, -pos, width, window->allocation.height,
+                                  &style->bg[GTK_STATE_NORMAL], TRUE, FALSE, opts.bgndAppearance, WIDGET_OTHER);
+            else
+                drawBevelGradient(cr, style, area, NULL, -pos, y, window->allocation.width, height,
+                                  &style->bg[GTK_STATE_NORMAL], FALSE, FALSE, opts.bgndAppearance, WIDGET_OTHER);
             return TRUE;
         }
     }
@@ -2008,7 +2012,7 @@ static void drawEntryField(cairo_t *cr, GtkStyle *style, GtkStateType state,
     if(GTK_APP_JAVA!=qtSettings.app)
         qtcEntrySetup(widget);
 
-    if(ROUND_NONE!=opts.round)
+    if(doEtch || ROUND_NONE!=opts.round)
     {
         if(!IS_FLAT(opts.bgndAppearance) && widget && drawBgndGradient(cr, style, area, widget, x, y, width, height))
             ;
@@ -4085,51 +4089,58 @@ static void gtkDrawShadow(GtkStyle *style, GdkWindow *window, GtkStateType state
 #endif
     else if(DETAIL("entry") || DETAIL("text"))
     {
-        gboolean combo=isComboBoxEntry(widget),
-                 isSpin=!combo && isSpinButton(widget),
-                 rev=reverseLayout(widget) || (combo && widget && reverseLayout(widget->parent));
-        GtkWidget *btn=NULL;
-        GtkStateType savedState=state;
+        if(widget && widget->parent && isList(widget->parent))
+        {
+            // Dont draw shadow for entries in listviews...
+            // Fixes RealPlayer's in-line editing of its favourites.
+        }
+        else
+        {
+            gboolean combo=isComboBoxEntry(widget),
+                    isSpin=!combo && isSpinButton(widget),
+                    rev=reverseLayout(widget) || (combo && widget && reverseLayout(widget->parent));
+            GtkWidget *btn=NULL;
+            GtkStateType savedState=state;
         
 #if GTK_CHECK_VERSION(2, 16, 0)
-        if(isSpin && widget && width==widget->allocation.width)
-        {
-            int btnWidth, dummy;
-            gdk_drawable_get_size(GTK_SPIN_BUTTON(widget)->panel, &btnWidth, &dummy);
-            width-=btnWidth;
-            if(rev)
-                x+=btnWidth;
-        }
+            if(isSpin && widget && width==widget->allocation.width)
+            {
+                int btnWidth, dummy;
+                gdk_drawable_get_size(GTK_SPIN_BUTTON(widget)->panel, &btnWidth, &dummy);
+                width-=btnWidth;
+                if(rev)
+                    x+=btnWidth;
+            }
 #endif
+            if((opts.unifySpin && isSpin) || (combo && opts.unifyCombo))
+                width+=2;
 
-        if((opts.unifySpin && isSpin) || (combo && opts.unifyCombo))
-            width+=2;
+            // If we're a combo entry, and not prelight, check to see if the button is
+            // prelighted, if so so are we!
+            if(GTK_STATE_PRELIGHT!=state && combo && opts.unifyCombo && widget && widget->parent)
+            {
+                btn=getComboButton(widget->parent);
+                if(!btn && widget->parent)
+                    btn=getMappedWidget(widget->parent, 0);
+                if(btn && GTK_STATE_PRELIGHT==btn->state)
+                    state=widget->state=GTK_STATE_PRELIGHT;
+            }
 
-        // If we're a combo entry, and not prelight, check to see if the button is
-        // prelighted, if so so are we!
-        if(GTK_STATE_PRELIGHT!=state && combo && opts.unifyCombo && widget && widget->parent)
-        {
-            btn=getComboButton(widget->parent);
-            if(!btn && widget->parent)
-                btn=getMappedWidget(widget->parent, 0);
-            if(btn && GTK_STATE_PRELIGHT==btn->state)
-                state=widget->state=GTK_STATE_PRELIGHT;
-        }
-        
-        drawEntryField(cr, style, state, widget, area, x, y, width, height,
-                       combo || isSpin
-                           ? rev
-                                ? ROUNDED_RIGHT
-                                : ROUNDED_LEFT
-                           : ROUNDED_ALL,
-                       WIDGET_ENTRY);
-        if(combo && opts.unifyCombo && widget && widget->parent)
-        {
-            if(btn && GTK_STATE_INSENSITIVE!=widget->state)
-                gtk_widget_queue_draw(btn);
+            drawEntryField(cr, style, state, widget, area, x, y, width, height,
+                        combo || isSpin
+                            ? rev
+                                    ? ROUNDED_RIGHT
+                                    : ROUNDED_LEFT
+                            : ROUNDED_ALL,
+                        WIDGET_ENTRY);
+            if(combo && opts.unifyCombo && widget && widget->parent)
+            {
+                if(btn && GTK_STATE_INSENSITIVE!=widget->state)
+                    gtk_widget_queue_draw(btn);
 
-            if(GTK_IS_COMBO_BOX_ENTRY(widget->parent))
-                qtcWidgetMapSetup(widget->parent, widget, 1);
+                if(GTK_IS_COMBO_BOX_ENTRY(widget->parent))
+                    qtcWidgetMapSetup(widget->parent, widget, 1);
+            }
         }
     }
     else
@@ -4338,7 +4349,7 @@ static GdkColor * getCheckRadioCol(GtkStyle *style, GtkStateType state, gboolean
     return !qtSettings.qt4 && mnu
                 ? &style->text[state]
                 : GTK_STATE_INSENSITIVE==state
-                    ? &qtSettings.colors[PAL_DISABLED][COLOR_BUTTON_TEXT]
+                    ? &qtSettings.colors[PAL_DISABLED][opts.crButton ? COLOR_BUTTON_TEXT : COLOR_TEXT]
                     : qtcPalette.check_radio;
 }
 
@@ -5085,14 +5096,15 @@ static void gtkDrawBoxGap(GtkStyle *style, GdkWindow *window, GtkStateType state
                 drawVLine(cr, QTC_CAIRO_COL(*col2), 1.0, x+gap_x+gap_width-2, y, rightPos ? 1 : 0);
                 drawHLine(cr, QTC_CAIRO_COL(*outer), 1.0, x+gap_x+gap_width-1, y, 2);
             }
-            if(gap_x>0 && TAB_MO_GLOW==opts.tabMouseOver)
-                drawVLine(cr, QTC_CAIRO_COL(*outer), 1.0, rev ? x+width-2 : x+1, y, 2);
-            else
-            {
-                drawVLine(cr, QTC_CAIRO_COL(*outer), 1.0, rev ? x+width-1 : x, y, 3);
-                if(gap_x>0)
-                    drawHLine(cr, QTC_CAIRO_COL(qtcPalette.background[2]), 1.0, x+1, y, 1);
-            }
+            if(opts.round>ROUND_SLIGHT)
+                if(gap_x>0 && TAB_MO_GLOW==opts.tabMouseOver)
+                    drawVLine(cr, QTC_CAIRO_COL(*outer), 1.0, rev ? x+width-2 : x+1, y, 2);
+                else
+                {
+                    drawVLine(cr, QTC_CAIRO_COL(*outer), 1.0, rev ? x+width-1 : x, y, 3);
+                    if(gap_x>0)
+                        drawHLine(cr, QTC_CAIRO_COL(qtcPalette.background[2]), 1.0, x+1, y, 1);
+                }
             break;
         case GTK_POS_BOTTOM:
             if(gap_x > 0)
@@ -5110,10 +5122,11 @@ static void gtkDrawBoxGap(GtkStyle *style, GdkWindow *window, GtkStateType state
                 drawVLine(cr, QTC_CAIRO_COL(*col2), 1.0, x+gap_x+gap_width-2, y+height-1, rightPos ? 1 : 0);
                 drawHLine(cr, QTC_CAIRO_COL(*outer), 1.0, x+gap_x+gap_width-1, y+height-1, 2);
             }
-            if(gap_x>0 && TAB_MO_GLOW==opts.tabMouseOver)
-                drawVLine(cr, QTC_CAIRO_COL(*outer), 1.0, rev ? x+width-2 : x+1, y+height-2, 2);
-            else
-                drawVLine(cr, QTC_CAIRO_COL(*outer), 1.0, rev ? x+width-1 : x, y+height-3, 3);
+            if(opts.round>ROUND_SLIGHT)
+                if(gap_x>0 && TAB_MO_GLOW==opts.tabMouseOver)
+                    drawVLine(cr, QTC_CAIRO_COL(*outer), 1.0, rev ? x+width-2 : x+1, y+height-2, 2);
+                else
+                    drawVLine(cr, QTC_CAIRO_COL(*outer), 1.0, rev ? x+width-1 : x, y+height-3, 3);
             break;
         case GTK_POS_LEFT:
             if(gap_x>0)
@@ -5131,14 +5144,15 @@ static void gtkDrawBoxGap(GtkStyle *style, GdkWindow *window, GtkStateType state
                 drawVLine(cr, QTC_CAIRO_COL(*col2), 1.0, x, y+gap_x+gap_width-2, 1);
                 drawVLine(cr, QTC_CAIRO_COL(*outer), 1.0, x, y+gap_x+gap_width-1, 2);
             }
-            if(gap_x>0 && TAB_MO_GLOW==opts.tabMouseOver)
-                drawHLine(cr, QTC_CAIRO_COL(*outer), 1.0, x, y+1, 2);
-            else
-            {
-                drawHLine(cr, QTC_CAIRO_COL(*outer), 1.0, x, y, 3);
-                if(gap_x>0)
-                    drawHLine(cr, QTC_CAIRO_COL(qtcPalette.background[2]), 1.0, x, y+1, 1);
-            }
+            if(opts.round>ROUND_SLIGHT)
+                if(gap_x>0 && TAB_MO_GLOW==opts.tabMouseOver)
+                    drawHLine(cr, QTC_CAIRO_COL(*outer), 1.0, x, y+1, 2);
+                else
+                {
+                    drawHLine(cr, QTC_CAIRO_COL(*outer), 1.0, x, y, 3);
+                    if(gap_x>0)
+                        drawHLine(cr, QTC_CAIRO_COL(qtcPalette.background[2]), 1.0, x, y+1, 1);
+                }
             break;
         case GTK_POS_RIGHT:
             if(gap_x>0)
@@ -5155,11 +5169,11 @@ static void gtkDrawBoxGap(GtkStyle *style, GdkWindow *window, GtkStateType state
                 drawVLine(cr, QTC_CAIRO_COL(*col2), 1.0, x+width-2, y+gap_x+gap_width-1, 2);
                 drawVLine(cr, QTC_CAIRO_COL(*outer), 1.0, x+width-1, y+gap_x+gap_width-1, 2);
             }
-            if(gap_x>0 && TAB_MO_GLOW==opts.tabMouseOver)
-                drawHLine(cr, QTC_CAIRO_COL(*outer), 1.0, x+width-2, y+1, 2);
-            else
-                drawHLine(cr, QTC_CAIRO_COL(*outer), 1.0, x+width-3, y, 3);
-
+            if(opts.round>ROUND_SLIGHT)
+                if(gap_x>0 && TAB_MO_GLOW==opts.tabMouseOver)
+                    drawHLine(cr, QTC_CAIRO_COL(*outer), 1.0, x+width-2, y+1, 2);
+                else
+                    drawHLine(cr, QTC_CAIRO_COL(*outer), 1.0, x+width-3, y, 3);
             break;
     }
 
@@ -6339,7 +6353,7 @@ static void generateColors()
     switch(opts.shadeCheckRadio)
     {
         default:
-            qtcPalette.check_radio=&qtSettings.colors[PAL_ACTIVE][COLOR_BUTTON_TEXT];
+            qtcPalette.check_radio=&qtSettings.colors[PAL_ACTIVE][opts.crButton ? COLOR_BUTTON_TEXT : COLOR_TEXT];
             break;
         case SHADE_BLEND_SELECTED:
         case SHADE_SELECTED:
