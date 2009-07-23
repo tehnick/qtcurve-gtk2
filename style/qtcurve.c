@@ -42,6 +42,7 @@ static struct
              *defbtn,
              *mouseover,
              *combobtn,
+             *sortedlv,
              menubar[TOTAL_SHADES+1],
              highlight[TOTAL_SHADES+1],
              focus[TOTAL_SHADES+1],
@@ -277,6 +278,30 @@ static GdkGC * realizeColors(GtkStyle *style, GdkColor *color)
     return gtk_gc_get(style->depth, style->colormap, &gc_values, GDK_GC_FOREGROUND);
 }
 
+static gboolean isSortColumn(GtkWidget *button)
+{
+    if(button && button->parent && GTK_IS_TREE_VIEW(button->parent))
+    {
+        GtkWidget *sort=NULL;;
+        GList     *columns=gtk_tree_view_get_columns(GTK_TREE_VIEW(button->parent)),
+                  *column;
+
+        for (column = columns; column && !sort && sort!=button; column=g_list_next(column))
+            if(GTK_IS_TREE_VIEW_COLUMN(column->data))
+            {
+                GtkTreeViewColumn *c=GTK_TREE_VIEW_COLUMN(column->data);
+
+                if(gtk_tree_view_column_get_sort_indicator(c))
+                    sort=c->button;
+            }
+
+        g_list_free(columns);
+        return sort==button;
+    }
+
+    return FALSE;
+};
+
 #define QTC_SET_BTN_COLS(SCROLLBAR, SCALE, LISTVIEW, STATE) \
 { \
     if(SCROLLBAR || SCALE) \
@@ -286,8 +311,15 @@ static GdkGC * realizeColors(GtkStyle *style, GdkColor *color)
                       (!opts.colorSliderMouseOver || GTK_STATE_PRELIGHT==STATE) \
                         ? qtcPalette.slider \
                         : qtcPalette.button[PAL_ACTIVE]; \
-    else if(LISTVIEW && !opts.lvButton) \
-        btn_colors=qtcPalette.background; \
+    else if(LISTVIEW) \
+    { \
+        if(GTK_STATE_INSENSITIVE!=state && qtcPalette.sortedlv && isSortColumn(widget)) \
+            btn_colors=qtcPalette.sortedlv;  \
+        else if(opts.lvButton) \
+            btn_colors=qtcPalette.button[GTK_STATE_INSENSITIVE==STATE ? PAL_DISABLED : PAL_ACTIVE]; \
+        else \
+            btn_colors=qtcPalette.background; \
+    } \
     else \
         btn_colors=qtcPalette.button[GTK_STATE_INSENSITIVE==STATE ? PAL_DISABLED : PAL_ACTIVE]; \
 }
@@ -893,74 +925,6 @@ static gboolean isGimpDockable(GtkWidget *widget)
 
 #define isMozillaWidget(widget) (isMozilla() && isFixedWidget(widget))
 
-static void setState(GtkWidget *widget, GtkStateType *state, gboolean *btn_down, int sliderWidth, int sliderHeight)
-{
-    if(isMozillaWidget(widget))
-    {
-        if(GTK_STATE_INSENSITIVE==*state)
-        {
-            *state=GTK_STATE_NORMAL;
-            if(btn_down)
-                *btn_down=FALSE;
-        }
-    }
-    else
-    {
-        GtkRange *range=GTK_RANGE(widget);
-        gboolean horiz=range->orientation,
-                 disableLeft=FALSE,
-                 disableRight=FALSE;
-        int      len=horiz ? sliderHeight : sliderWidth,
-                 max=horiz ? range->range_rect.height
-                           : range->range_rect.width,
-                leftBtns=0,
-                rightBtns=0;
-
-        switch(opts.scrollbarType)
-        {
-            case SCROLLBAR_KDE:
-                leftBtns=SBAR_BTN_SIZE;
-                rightBtns=SBAR_BTN_SIZE*2;
-                break;
-            default:
-            case SCROLLBAR_WINDOWS:
-                leftBtns=SBAR_BTN_SIZE;
-                rightBtns=SBAR_BTN_SIZE;
-                break;
-            case SCROLLBAR_PLATINUM:
-                leftBtns=0;
-                rightBtns=SBAR_BTN_SIZE*2;
-                break;
-            case SCROLLBAR_NEXT:
-                leftBtns=SBAR_BTN_SIZE*2;
-                rightBtns=0;
-                break;
-            case SCROLLBAR_NONE:
-                break;
-        }
-        if(-1!=len)
-            disableLeft=disableRight=len==(max-(leftBtns+rightBtns));
-        else if(/*GTK_APP_JAVA_SWT!=qtSettings.app || */!widget || !widget->parent || !widget->parent->parent ||
-                !GTK_IS_FIXED(widget->parent) || !widget->parent->parent->name ||
-                strcmp(widget->parent->parent->name, "MozillaGtkWidget"))
-        {
-            if(range->slider_start==leftBtns)
-                disableLeft=TRUE;
-            if(range->slider_end+rightBtns==max)
-                disableRight=TRUE;
-        }
-
-        if(disableLeft && disableRight)
-            *state=GTK_STATE_INSENSITIVE;
-        else if(GTK_STATE_INSENSITIVE==*state)
-        {
-            *state=GTK_STATE_NORMAL;
-            if(btn_down)
-                *btn_down=FALSE;
-        }
-    }
-}
-
 #define drawAreaColor(cr, area, region, col, x, y, width, height) \
         drawAreaColorAlpha(cr, area, region, col, x, y, width, height, 1.0)
 
@@ -1259,7 +1223,7 @@ static void drawBevelGradientAlpha(cairo_t *cr, GtkStyle *style, GdkRectangle *a
             
             if(/*sel && */(topTab || botTab) && i==grad->numStops-1)
             {
-                if(!IS_FLAT(opts.bgndAppearance) && 0==opts.tabBgnd)
+                if(sel && !IS_FLAT(opts.bgndAppearance) && 0==opts.tabBgnd)
                     alpha=0.0;
                 col=*base;
             }
@@ -1396,6 +1360,9 @@ static void realDrawBorder(cairo_t *cr, GtkStyle *style, GtkStateType state, Gdk
     height--;
 
     setCairoClipping(cr, area, region);
+
+    if(WIDGET_TAB_BOT==widget || WIDGET_TAB_TOP==widget)
+        colors=qtcPalette.background;
 
     switch(borderProfile)
     {
@@ -1573,7 +1540,7 @@ static void drawLightBevel(cairo_t *cr, GtkStyle *style, GdkWindow *window, GtkS
     if(width>0 && height>0)
     {
         clipPath(cr, x, y, width, height, widget, RADIUS_EXTERNAL, round);
-        drawBevelGradient(cr, style, area, region, x, y, width-1, height-1, base, horiz,
+        drawBevelGradient(cr, style, area, region, x, y, width, height, base, horiz,
                           sunken && !IS_TROUGH(widget), app, widget);
 
         if(plastikMouseOver)
@@ -1679,7 +1646,7 @@ static void drawLightBevel(cairo_t *cr, GtkStyle *style, GdkWindow *window, GtkS
             cairo_new_path(cr);
             cairo_save(cr);
             
-            if(opts.round<ROUND_MAX || (!QTC_MAX_ROUND_WIDGET(widget) && !IS_SLIDER(widget)))
+            if(opts.round<ROUND_MAX || (!QTC_IS_MAX_ROUND_WIDGET(widget) && !IS_SLIDER(widget)))
             {
                 rad/=2.0;
                 mod=mod>>1;
@@ -2684,19 +2651,21 @@ debugDisplayWidget(widget, 3);
 
         if(isOnComboBox(widget, 0) && !onComboEntry)
         {
+            GdkColor *arrowColor=QTC_MO_ARROW(false, &qtSettings.colors[GTK_STATE_INSENSITIVE==state
+                                                                            ? PAL_DISABLED : PAL_ACTIVE]
+                                                                       [COLOR_BUTTON_TEXT]);
             x++;
 
-//             if(opts.singleComboArrow)
-                drawArrow(cr, QTC_MO_ARROW(false, &qtSettings.colors[GTK_STATE_INSENSITIVE==state ? PAL_DISABLED : PAL_ACTIVE]
-                                                                    [COLOR_BUTTON_TEXT]),
-                          area,  GTK_ARROW_DOWN, x+(width>>1), y+(height>>1), FALSE, TRUE);
-//             else
-//             {
-//                 drawArrow(window, qtcurveStyle->button_text_gc[GTK_STATE_INSENSITIVE==state ? PAL_DISABLED : PAL_ACTIVE], area,  GTK_ARROW_UP,
-//                           x+(width>>1), y+(height>>1)-(LARGE_ARR_HEIGHT-(opts.vArrows ? 0 : 1)), FALSE, TRUE);
-//                 drawArrow(window, qtcurveStyle->button_text_gc[GTK_STATE_INSENSITIVE==state ? PAL_DISABLED : PAL_ACTIVE], area,  GTK_ARROW_DOWN,
-//                           x+(width>>1), y+(height>>1)+(LARGE_ARR_HEIGHT-1), FALSE, TRUE);
-//             }
+            if(opts.doubleGtkComboArrow)
+            {
+                int pad=opts.vArrows ? 0 : 1;
+                drawArrow(cr, arrowColor, area,  GTK_ARROW_UP,
+                          x+(width>>1), y+(height>>1)-(LARGE_ARR_HEIGHT-pad), FALSE, TRUE);
+                drawArrow(cr, arrowColor, area,  GTK_ARROW_DOWN,
+                          x+(width>>1), y+(height>>1)+(LARGE_ARR_HEIGHT-pad), FALSE, TRUE);
+            }
+            else
+                drawArrow(cr, arrowColor, area,  GTK_ARROW_DOWN, x+(width>>1), y+(height>>1), FALSE, TRUE);
         }
         else
         {
@@ -2721,17 +2690,6 @@ debugDisplayWidget(widget, 3);
                  smallArrows=isSpinButton && !opts.unifySpin;
         int      stepper=sbar ? getStepper(widget, x, y, opts.sliderWidth, opts.sliderWidth) : QTC_STEPPER_NONE;
 
-/*
-#if GTK_CHECK_VERSION(2, 10, 0)
-        if(sbar && GTK_STATE_INSENSITIVE==state)
-            state=GTK_STATE_NORMAL;
-#else
-*/
-        if(GTK_IS_RANGE(widget) && sbar)
-            setState(widget, &state, NULL, -1, -1);
-/*
-#endif
-*/
         sanitizeSize(window, &width, &height);
 
 #if 0
@@ -2801,11 +2759,11 @@ debugDisplayWidget(widget, 3);
             x--;
 
         if(isSpinButton && !QTC_DO_EFFECT)
-            if(GTK_ARROW_UP==arrow_type)
-                y--;
-            else
-                y++;
+            y+=(GTK_ARROW_UP==arrow_type ? -1 : 1);
 
+        if(opts.unifySpin && isSpinButton && !opts.vArrows && GTK_ARROW_DOWN==arrow_type)
+            y--;
+ 
         if(GTK_STATE_ACTIVE==state && (sbar  || isSpinButton) && MO_GLOW==opts.coloredMouseOver)
             state=GTK_STATE_PRELIGHT;
 
@@ -2826,13 +2784,8 @@ static void drawBox(GtkStyle *style, GdkWindow *window, GtkStateType state,
                     gint height, gboolean btn_down)
 {
     gboolean sbar=detail && ( 0==strcmp(detail, "hscrollbar") || 0==strcmp(detail, "vscrollbar") ||
-                              0==strcmp(detail, "stepper"));
-
-    if(GTK_IS_RANGE(widget) && sbar)
-        setState(widget, &state, &btn_down, -1, -1);
-    {
-
-    gboolean pbar=DETAIL("bar"), //  && GTK_IS_PROGRESS_BAR(widget),
+                              0==strcmp(detail, "stepper")),
+             pbar=DETAIL("bar"), //  && GTK_IS_PROGRESS_BAR(widget),
              qtc_paned=!pbar && IS_QTC_PANED,
              slider=!qtc_paned && (DETAIL("slider") || DETAIL("qtc-slider")),
              hscale=!slider && DETAIL("hscale"),
@@ -4174,7 +4127,6 @@ debugDisplayWidget(widget, 3);
     }
 
     QTC_CAIRO_END
-    }   /* C-Scpoing... */
 }
 
 static void gtkDrawBox(GtkStyle *style, GdkWindow *window, GtkStateType state,
@@ -5416,7 +5368,11 @@ debugDisplayWidget(widget, 3);
                     *selCol1=&qtcPalette.highlight[0],
                     *selCol2=&qtcPalette.highlight[IS_FLAT(opts.appearance) ? 0 : 3];
         GdkRectangle clipArea;
-        EBorder     borderProfile=active ? (opts.borderTab ? BORDER_LIGHT : BORDER_RAISED) : BORDER_FLAT;
+        EBorder     borderProfile=active || opts.borderInactiveTab
+                                    ? opts.borderTab
+                                        ? BORDER_LIGHT
+                                        : BORDER_RAISED
+                                    : BORDER_FLAT;
 
         FN_CHECK
 
@@ -5531,7 +5487,7 @@ debugDisplayWidget(widget, 3);
                 cairo_restore(cr);
                 drawBorder(cr, style, state, area, NULL, x+sizeAdjust, y-4, width-(2*sizeAdjust), height+4,
                            glowMo ? qtcPalette.mouseover : qtcPalette.background, round,
-                           borderProfile, WIDGET_OTHER, 0);
+                           borderProfile, WIDGET_TAB_BOT, 0);
                 if(glowMo)
                 {
                     if(area)
@@ -5583,7 +5539,7 @@ debugDisplayWidget(widget, 3);
                 cairo_restore(cr);
                 drawBorder(cr, style, state, area, NULL, x+sizeAdjust, y, width-(2*(mozTab ? 2 : 1)*sizeAdjust), height+4,
                            glowMo ? qtcPalette.mouseover : qtcPalette.background, round,
-                           borderProfile, WIDGET_OTHER, 0);
+                           borderProfile, WIDGET_TAB_TOP, 0);
                 if(glowMo)
                 {
                     if(area)
@@ -5631,7 +5587,7 @@ debugDisplayWidget(widget, 3);
                 cairo_restore(cr);
                 drawBorder(cr, style, state, area, NULL, x-4, y+sizeAdjust, width+4, height-(2*sizeAdjust),
                            glowMo ? qtcPalette.mouseover : qtcPalette.background, round,
-                           borderProfile, WIDGET_OTHER, 0);
+                           borderProfile, WIDGET_TAB_BOT, 0);
                 if(glowMo)
                 {
                     if(area)
@@ -5682,7 +5638,7 @@ debugDisplayWidget(widget, 3);
                 cairo_restore(cr);
                 drawBorder(cr, style, state, area, NULL, x, y+sizeAdjust, width+4, height-(2*sizeAdjust),
                            glowMo ? qtcPalette.mouseover : qtcPalette.background, round,
-                           borderProfile, WIDGET_OTHER, 0);
+                           borderProfile, WIDGET_TAB_TOP, 0);
                 if(glowMo)
                 {
                     if(area)
@@ -5731,8 +5687,6 @@ static void gtkDrawSlider(GtkStyle *style, GdkWindow *window, GtkStateType state
     QTC_CAIRO_BEGIN
 
     lastSlider.widget=NULL;
-    if(GTK_IS_RANGE(widget) && scrollbar)
-        setState(widget, &state, NULL, width, height);
 
     if(useButtonColor(detail))
     {
@@ -6475,6 +6429,51 @@ static void generateColors()
             break;
     }
 
+    qtcPalette.sortedlv=NULL;
+    switch(opts.sortedLv)
+    {
+        case SHADE_DARKEN:
+        {
+            GdkColor color;
+
+            qtcPalette.sortedlv=(GdkColor *)malloc(sizeof(GdkColor)*(TOTAL_SHADES+1));
+            shade(&opts, opts.lvButton ? &qtcPalette.button[PAL_ACTIVE][ORIGINAL_SHADE]
+                                       : &qtcPalette.background[ORIGINAL_SHADE], &color, LV_HEADER_DARK_FACTOR);
+            shadeColors(&color, qtcPalette.sortedlv);
+            break;
+        }
+        case SHADE_SELECTED:
+            qtcPalette.sortedlv=qtcPalette.highlight;
+            break;
+        case SHADE_CUSTOM:
+            if(SHADE_CUSTOM==opts.shadeSliders && QTC_EQUAL_COLOR(opts.customSlidersColor, opts.customSortedLvColor))
+                qtcPalette.sortedlv=qtcPalette.slider;
+            else if(SHADE_CUSTOM==opts.comboBtn && QTC_EQUAL_COLOR(opts.customComboBtnColor, opts.customSortedLvColor))
+                qtcPalette.sortedlv=qtcPalette.combobtn;
+            else
+            {
+                qtcPalette.sortedlv=(GdkColor *)malloc(sizeof(GdkColor)*(TOTAL_SHADES+1));
+                shadeColors(&opts.customSortedLvColor, qtcPalette.sortedlv);
+            }
+            break;
+        case SHADE_BLEND_SELECTED:
+            if(SHADE_BLEND_SELECTED==opts.shadeSliders)
+                qtcPalette.sortedlv=qtcPalette.slider;
+            else if(SHADE_BLEND_SELECTED==opts.comboBtn)
+                qtcPalette.sortedlv=qtcPalette.combobtn;
+            else
+            {
+                GdkColor mid=midColor(&qtcPalette.highlight[ORIGINAL_SHADE],
+                                      opts.lvButton ? &qtcPalette.button[PAL_ACTIVE][ORIGINAL_SHADE]
+                                                    : &qtcPalette.background[ORIGINAL_SHADE]);
+
+                qtcPalette.sortedlv=(GdkColor *)malloc(sizeof(GdkColor)*(TOTAL_SHADES+1));
+                shadeColors(&mid, qtcPalette.sortedlv);
+            }
+        default:
+            break;
+    }
+
     switch(opts.defBtnIndicator)
     {
         case IND_GLOW:
@@ -6496,7 +6495,7 @@ static void generateColors()
             else
             {
                 GdkColor mid=midColor(&qtcPalette.highlight[ORIGINAL_SHADE],
-                                    &qtcPalette.button[PAL_ACTIVE][ORIGINAL_SHADE]);
+                                      &qtcPalette.button[PAL_ACTIVE][ORIGINAL_SHADE]);
 
                 qtcPalette.defbtn=(GdkColor *)malloc(sizeof(GdkColor)*(TOTAL_SHADES+1));
                 shadeColors(&mid, qtcPalette.defbtn);
