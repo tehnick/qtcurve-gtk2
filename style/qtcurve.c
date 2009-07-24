@@ -1525,7 +1525,7 @@ static void drawLightBevel(cairo_t *cr, GtkStyle *style, GdkWindow *window, GtkS
                 bevelledButton=WIDGET_BUTTON(widget) && APPEARANCE_BEVELLED==app,
                 doEtch=flags&DF_DO_BORDER && (ETCH_WIDGET(widget) || WIDGET_COMBO_BUTTON==widget) && QTC_DO_EFFECT,
                 horiz=!(flags&DF_VERT);
-    int         xe=x, ye=y, we=width, he=height;
+    int         xe=x, ye=y, we=width, he=height, origWidth=width, origHeight=height;
     double      xd=x+0.5, yd=y+0.5;
 
     if(WIDGET_COMBO_BUTTON==widget && doEtch)
@@ -1646,7 +1646,8 @@ static void drawLightBevel(cairo_t *cr, GtkStyle *style, GdkWindow *window, GtkS
             cairo_new_path(cr);
             cairo_save(cr);
             
-            if(opts.round<ROUND_MAX || (!QTC_IS_MAX_ROUND_WIDGET(widget) && !IS_SLIDER(widget)))
+            if(getWidgetRound(&opts, origWidth, origHeight, widget)<ROUND_MAX ||
+               (!QTC_IS_MAX_ROUND_WIDGET(widget) && !IS_SLIDER(widget)))
             {
                 rad/=2.0;
                 mod=mod>>1;
@@ -2368,6 +2369,16 @@ debugDisplayWidget(widget, 3);
         qtcWindowSetup(widget);
     else if(widget && GTK_IS_TREE_VIEW(widget))
     {
+        int round=detail && GTK_STATE_SELECTED==state && QTC_ROUNDED
+                    ? 0!=strstr(detail, "_start")
+                        ? ROUNDED_LEFT
+                        : 0!=strstr(detail, "_end")
+                            ? ROUNDED_RIGHT
+                            : 0!=strstr(detail, "_middle")
+                                ? ROUNDED_NONE
+                                : ROUNDED_ALL
+                    : ROUNDED_NONE;
+
         if(opts.lvLines)
         {
             QtCurveStyle *qtcurveStyle = (QtCurveStyle *)style;
@@ -2385,28 +2396,15 @@ debugDisplayWidget(widget, 3);
             state=GTK_STATE_PRELIGHT;
     */
 
-        if(GTK_STATE_SELECTED==state)
-        {
-            int round=detail
-                    ? 0!=strstr(detail, "_start")
-                        ? ROUNDED_LEFT
-                        : 0!=strstr(detail, "_end")
-                            ? ROUNDED_RIGHT
-                            : 0!=strstr(detail, "_middle")
-                                ? ROUNDED_NONE
-                                : ROUNDED_ALL
-                    : ROUNDED_NONE;
-
-            if(!QTC_ROUNDED)
-                round=ROUNDED_NONE;
-            drawSelection(cr, style, state, area, widget, detail, x, y, width, height, round);
-        }
-        else
+        if(GTK_STATE_SELECTED!=state || ROUNDED_NONE!=round)
             drawAreaColor(cr, area, NULL,
                           getCellCol(haveAlternareListViewCol() && gtk_tree_view_get_rules_hint(GTK_TREE_VIEW(widget)) && DETAILHAS("cell_odd")
                                         ? &qtSettings.colors[PAL_ACTIVE][COLOR_LV]
                                         : &style->base[GTK_STATE_NORMAL], detail),
                               x, y, width, height);
+
+        if(GTK_STATE_SELECTED==state)
+            drawSelection(cr, style, state, area, widget, detail, x, y, width, height, round);
     }
     else if( ( GTK_STATE_PRELIGHT==state && (detail && (0==strcmp(detail, QTC_PANED) || 0==strcmp(detail, "expander") ||
                                                   (opts.crHighlight && 0==strcmp(detail, "checkbutton")))) ) )
@@ -2499,7 +2497,7 @@ debugDisplayWidget(widget, 3);
             case LINE_FLAT:
             case LINE_SUNKEN:
             case LINE_DASHES:
-                drawLines(cr, x, y, width, height, height>width, NUM_SPLITTER_DASHES, 3,
+                drawLines(cr, x, y, width, height, height>width, NUM_SPLITTER_DASHES, 2,
                           cols, area, 3, opts.splitters);
         }
     }
@@ -4504,6 +4502,8 @@ debugDisplayWidget(widget, 3);
 
     if(mnu && GTK_APP_OPEN_OFFICE==qtSettings.app)
         x+=2, y-=2;
+    else if(mnu && GTK_APP_MOZILLA==qtSettings.app)
+        y-=4;
 
     if(mnu && GTK_STATE_PRELIGHT==state)
         state=GTK_STATE_NORMAL;
@@ -4676,7 +4676,10 @@ static void gtkDrawOption(GtkStyle *style, GdkWindow *window, GtkStateType state
 //             y++;
 
         if(mnu)
-            y+=2;
+            if(GTK_APP_MOZILLA==qtSettings.app)
+                y-=2;
+            else
+                y+=2;
 
         {
             GdkColor  new_colors[TOTAL_SHADES+1],

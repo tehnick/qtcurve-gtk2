@@ -1,3 +1,9 @@
+0.67.1
+------
+1. Adjust Agua overlay if widget is not max rounded.
+2. Fix flat/sunken/dashed splitter handles!
+3. Fix check/radio position in Thunderbird2 menus.
+
 0.67.0
 ------
 1. Add option to draw insider border of inactive tabs.
