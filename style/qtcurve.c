@@ -1680,7 +1680,7 @@ static void drawLightBevel(cairo_t *cr, GtkStyle *style, GdkWindow *window, GtkS
                      horizontal=WIDGET_SB_SLIDER==widget ? !horiz
                                                     : (horiz && WIDGET_SB_BUTTON!=widget) ||
                                                         (!horiz && WIDGET_SB_BUTTON==widget);
-        int          len=WIDGET_SB_SLIDER==widget ? QTC_SB_SLIDER_MO_LEN(horiz ? width : height) : (thin ? 1 : 2);
+        int          len=WIDGET_SB_SLIDER==widget ? QTC_SB_SLIDER_MO_LEN(horiz ? width : height)+1 : (thin ? 1 : 2);
         GdkRectangle rect;
         if(horizontal)
             rect.x=x, rect.y=y+len, rect.width=width, rect.height=height-(len*2);
@@ -2398,10 +2398,12 @@ debugDisplayWidget(widget, 3);
 
         if(GTK_STATE_SELECTED!=state || ROUNDED_NONE!=round)
             drawAreaColor(cr, area, NULL,
-                          getCellCol(haveAlternareListViewCol() && gtk_tree_view_get_rules_hint(GTK_TREE_VIEW(widget)) && DETAILHAS("cell_odd")
-                                        ? &qtSettings.colors[PAL_ACTIVE][COLOR_LV]
-                                        : &style->base[GTK_STATE_NORMAL], detail),
-                              x, y, width, height);
+                          getCellCol(haveAlternareListViewCol() &&
+                          (opts.forceAlternateLvCols || gtk_tree_view_get_rules_hint(GTK_TREE_VIEW(widget))) &&
+                          DETAILHAS("cell_odd")
+                            ? &qtSettings.colors[PAL_ACTIVE][COLOR_LV]
+                            : &style->base[GTK_STATE_NORMAL], detail),
+                          x, y, width, height);
 
         if(GTK_STATE_SELECTED==state)
             drawSelection(cr, style, state, area, widget, detail, x, y, width, height, round);
@@ -4882,9 +4884,13 @@ static void gtkDrawLayout(GtkStyle *style, GdkWindow *window, GtkStateType state
         if(!isMenuItem && GTK_STATE_PRELIGHT==state)
             state=GTK_STATE_NORMAL;
 
-// This seems to place the text too low down, not sure why it was here!
-//         if(but && widget && 0==widget->allocation.height%2)
-//             y++;
+        /*
+           This check of 'requisition' size (and not 'allocation') seems to match better
+           with Qt4's text positioning. For example, 10pt verdana - no shift is required
+           9pt DejaVu Sans requires the shift
+        */
+        if(but && widget && widget->requisition.height<widget->allocation.height && widget->requisition.height%2)
+            y++;
         
         but= but || isOnComboBox(widget, 0);
 
