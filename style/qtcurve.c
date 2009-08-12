@@ -29,7 +29,7 @@
 #define QTC_COMMON_FUNCTIONS
 #include "qtcurve.h"
 
-#define QTC_MO_ARROW(MENU, COL) (!MENU && MO_GLOW==opts.coloredMouseOver && GTK_STATE_PRELIGHT==state \
+#define QTC_MO_ARROW(MENU, COL) (!MENU && MO_NONE!=opts.coloredMouseOver && GTK_STATE_PRELIGHT==state \
                                     ? &qtcPalette.mouseover[QT_STD_BORDER] : (COL))
 
 #define SBAR_BTN_SIZE opts.sliderWidth
@@ -1347,7 +1347,7 @@ static void realDrawBorder(cairo_t *cr, GtkStyle *style, GtkStateType state, Gdk
     gboolean     enabled=GTK_STATE_INSENSITIVE!=state,
                  useText=GTK_STATE_INSENSITIVE!=state && WIDGET_DEF_BUTTON==widget && IND_FONT_COLOR==opts.defBtnIndicator && enabled,
                  hasFocus=enabled && qtcPalette.focus && c_colors==qtcPalette.focus, /* CPD USED TO INDICATE FOCUS! */
-                 hasMouseOver=enabled && qtcPalette.mouseover && c_colors==qtcPalette.mouseover;
+                 hasMouseOver=enabled && qtcPalette.mouseover && c_colors==qtcPalette.mouseover && QTC_ENTRY_MO;
     GdkColor     *colors=c_colors ? c_colors : qtcPalette.background;
     int          useBorderVal=!enabled && WIDGET_BUTTON(widget)
                                 ? QT_DISABLED_BORDER
@@ -1424,10 +1424,10 @@ static void realDrawBorder(cairo_t *cr, GtkStyle *style, GtkStateType state, Gdk
        (WIDGET_FRAME==widget || ((WIDGET_ENTRY==widget || WIDGET_SCROLLVIEW==widget) &&
                                  !opts.etchEntry && !hasFocus && !hasMouseOver)))
     {
-        cairo_set_source_rgba(cr, QTC_CAIRO_COL(*border_col), enabled ? 1.0 : 0.65);
+        cairo_set_source_rgba(cr, QTC_CAIRO_COL(*border_col), enabled ? 1.0 : QT_LOWER_BORDER_ALPHA);
         createTLPath(cr, xd, yd, width, height, radius, round);
         cairo_stroke(cr);
-        cairo_set_source_rgba(cr, QTC_CAIRO_COL(*border_col), 0.65);
+        cairo_set_source_rgba(cr, QTC_CAIRO_COL(*border_col), QT_LOWER_BORDER_ALPHA);
         createBRPath(cr, xd, yd, width, height, radius, round);
         cairo_stroke(cr);
     }
@@ -1523,7 +1523,7 @@ static void drawLightBevel(cairo_t *cr, GtkStyle *style, GdkWindow *window, GtkS
                 draw3dfull=!lightBorder && QTC_DRAW_3D_FULL_BORDER(sunken, app),
                 draw3d=draw3dfull || (!lightBorder && QTC_DRAW_3D_BORDER(sunken, app)),
                 bevelledButton=WIDGET_BUTTON(widget) && APPEARANCE_BEVELLED==app,
-                doEtch=flags&DF_DO_BORDER && (ETCH_WIDGET(widget) || WIDGET_COMBO_BUTTON==widget) && QTC_DO_EFFECT,
+                doEtch=flags&DF_DO_BORDER && (ETCH_WIDGET(widget) || (WIDGET_COMBO_BUTTON==widget && opts.etchEntry)) && QTC_DO_EFFECT,
                 horiz=!(flags&DF_VERT);
     int         xe=x, ye=y, we=width, he=height, origWidth=width, origHeight=height;
     double      xd=x+0.5, yd=y+0.5;
@@ -1742,8 +1742,8 @@ static void drawLightBevel(cairo_t *cr, GtkStyle *style, GdkWindow *window, GtkS
     {
         GdkColor *borderCols=(WIDGET_COMBO==widget || WIDGET_COMBO_BUTTON==widget) && colors==qtcPalette.combobtn
                             ? GTK_STATE_PRELIGHT==state && MO_GLOW==opts.coloredMouseOver && !sunken
-                                ? &qtcPalette.mouseover
-                                : &qtcPalette.button[PAL_ACTIVE]
+                                ? qtcPalette.mouseover
+                                : qtcPalette.button[PAL_ACTIVE]
                             : colors;
                             
         cairo_new_path(cr);
@@ -2074,7 +2074,8 @@ static void drawEntryField(cairo_t *cr, GtkStyle *style, GtkStateType state,
 {
     gboolean enabled=!(GTK_STATE_INSENSITIVE==state || (widget && !GTK_WIDGET_IS_SENSITIVE(widget))),
              highlightReal=enabled && widget && GTK_WIDGET_HAS_FOCUS(widget) && GTK_APP_JAVA!=qtSettings.app && qtcPalette.focus,
-             mouseOver=enabled && (GTK_STATE_PRELIGHT==state || (lastMoEntry && widget==lastMoEntry) )&& qtcPalette.mouseover && GTK_APP_JAVA!=qtSettings.app,
+             mouseOver=QTC_ENTRY_MO && enabled && (GTK_STATE_PRELIGHT==state || (lastMoEntry && widget==lastMoEntry) ) &&
+                       qtcPalette.mouseover && GTK_APP_JAVA!=qtSettings.app,
              highlight=highlightReal || mouseOver,
              doEtch=QTC_DO_EFFECT && opts.etchEntry;
     GdkColor *colors=mouseOver
@@ -2767,6 +2768,9 @@ debugDisplayWidget(widget, 3);
         if(GTK_STATE_ACTIVE==state && (sbar  || isSpinButton) && MO_GLOW==opts.coloredMouseOver)
             state=GTK_STATE_PRELIGHT;
 
+        if(isMenuItem && GTK_ARROW_RIGHT==arrow_type && !isMozilla() && GTK_APP_OPEN_OFFICE!=qtSettings.app)
+            x-=2;
+
         {
         GdkColor *col=isSpinButton || sbar
                         ? &qtSettings.colors[GTK_STATE_INSENSITIVE==state ? PAL_DISABLED : PAL_ACTIVE][COLOR_BUTTON_TEXT]
@@ -2870,7 +2874,7 @@ debugDisplayWidget(widget, 3);
 
     if(spinUp || spinDown)
     {
-        if(!opts.unifySpin && (!opts.unifySpinBtns || sunken || GTK_STATE_PRELIGHT==state))
+        if(!opts.unifySpin && (!opts.unifySpinBtns || sunken/* || GTK_STATE_PRELIGHT==state*/))
         {
             EWidget      wid=spinUp ? WIDGET_SPIN_UP : WIDGET_SPIN_DOWN;
             GdkRectangle *a=area,
@@ -2894,12 +2898,15 @@ debugDisplayWidget(widget, 3);
                     width--;
                 }
                 height++;
+
                 if(opts.unifySpinBtns)
                 {
                     unified.x=x, unified.y=y, unified.width=width, unified.height=height-(GTK_STATE_PRELIGHT==state ? 2 : 1);
                     height*=2;
                     area=&unified;
                 }
+                else if(!opts.etchEntry)
+                    height++;
             }
             else if (QTC_DO_EFFECT && opts.etchEntry)
             {
@@ -3183,7 +3190,7 @@ debugDisplayWidget(widget, 3);
                 {
                     GtkWidget *entry=widget ? getComboEntry(widget->parent) : NULL;
                     gboolean  rev=FALSE,
-                              mozToolbar=isMozilla() && widget && widget->parent && widget->parent->parent &&  widget->parent->parent->parent && 
+                              mozToolbar=isMozilla() && widget && widget->parent && widget->parent->parent &&  widget->parent->parent->parent &&
                                          widget->parent->parent->parent->name &&
                                          GTK_IS_TOGGLE_BUTTON(widget) && GTK_IS_COMBO_BOX_ENTRY(widget->parent) &&
                                          GTK_IS_FIXED(widget->parent->parent) && GTK_IS_WINDOW(widget->parent->parent->parent) &&
@@ -3330,7 +3337,13 @@ debugDisplayWidget(widget, 3);
                     if(rev)
                         btn.width+=3;
                     else
-                        btn.x-=3, btn.width+=3;
+                    {
+                        btn.x-=3;
+                        if(QTC_DO_EFFECT)
+                            btn.width+=3;
+                        else
+                            btn.width+=1;
+                    }
                     drawLightBevel(cr, style, window, state, area, NULL, btn.x, btn.y, btn.width, btn.height,
                                    &cols[bg], cols, rev ? ROUNDED_LEFT : ROUNDED_RIGHT, WIDGET_COMBO,
                                    BORDER_FLAT, (sunken ? DF_SUNKEN : 0)|DF_DO_BORDER, widget);
@@ -3389,7 +3402,11 @@ debugDisplayWidget(widget, 3);
                         if(rev)
                             btn.width+=3;
                         else
-                            btn.x-=3, btn.width+=3;
+                        {
+                            btn.x-=3;
+                            if(QTC_DO_EFFECT)
+                                btn.width+=3;
+                        }
                         drawLightBevel(cr, style, window, state, area, NULL, btn.x, btn.y, btn.width, btn.height,
                                     &cols[bg], cols, rev ? ROUNDED_LEFT : ROUNDED_RIGHT, WIDGET_COMBO,
                                     BORDER_FLAT, (sunken ? DF_SUNKEN : 0)|DF_DO_BORDER, widget);
@@ -3886,13 +3903,13 @@ debugDisplayWidget(widget, 3);
                 drawLightBevel(cr, style, window, new_state, area, NULL, x, y,
                             width, height, &itemCols[fillVal],
                             itemCols, round, WIDGET_PROGRESSBAR, BORDER_FLAT,
-                            DF_DRAW_INSIDE|(horiz ? 0 : DF_VERT)|DF_DO_CORNERS, widget);
+                            (horiz ? 0 : DF_VERT)|DF_DO_CORNERS, widget);
 
             if(opts.stripedProgress && width>4 && height>4)
                 drawLightBevel(cr, style, window, new_state, NULL, region, x, y,
                             width, height, &itemCols[1],
                             qtcPalette.highlight, round, WIDGET_PROGRESSBAR, BORDER_FLAT,
-                            DF_DRAW_INSIDE|(opts.fillProgress ? 0 : DF_DO_BORDER)|(horiz ? 0 : DF_VERT)|DF_DO_CORNERS, widget);
+                            (opts.fillProgress ? 0 : DF_DO_BORDER)|(horiz ? 0 : DF_VERT)|DF_DO_CORNERS, widget);
 
             if(width>2 && height>2)
                 realDrawBorder(cr, style, state, area, NULL, x, y, width, height,
@@ -4262,8 +4279,17 @@ static void gtkDrawShadow(GtkStyle *style, GdkWindow *window, GtkStateType state
                     /* See code in qt_settings.c as to isMozill part */
                     if(opts.squareScrollViews || isMozillaWidget(widget))
                     {
+                        /* Flat style...
                         drawBorder(cr, style, state, area, NULL, x, y, width, height,
                                    NULL, ROUNDED_NONE, BORDER_FLAT, WIDGET_SCROLLVIEW, 0);
+                        */
+                        /* 3d... */
+                        cairo_set_source_rgb(cr, QTC_CAIRO_COL(qtcPalette.background[QT_STD_BORDER]));
+                        createTLPath(cr, x+0.5, y+0.5, width-1, height-1, 0.0, ROUNDED_NONE);
+                        cairo_stroke(cr);
+                        cairo_set_source_rgba(cr, QTC_CAIRO_COL(qtcPalette.background[QT_STD_BORDER]), QT_LOWER_BORDER_ALPHA);
+                        createBRPath(cr, x+0.5, y+0.5, width-1, height-1, 0.0, ROUNDED_NONE);
+                        cairo_stroke(cr);
                         doBorder=false;
                     }
                     else if(opts.etchEntry)
@@ -6143,8 +6169,8 @@ static void gtkDrawFocus(GtkStyle *style, GdkWindow *window, GtkStateType state,
         if(doEtch)
             x--, width+=2;
         else
-            y--, height+=2;
-        if(opts.thinnerBtns)
+            x-=2, width+=4;
+        if(doEtch && opts.thinnerBtns)
             y++, height-=2;
         btn=true;
     }
