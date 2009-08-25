@@ -1857,7 +1857,7 @@ static void drawLines(cairo_t *cr, double rx, double ry, int rwidth, int rheight
                     y2 = ry + rheight-1;
     GdkColor        *col1 = &cols[dark],
                     *col2 = &cols[0];
-    cairo_pattern_t *pt1=(opts.fadeLines && (horiz ? rwidth : rheight)>16)
+    cairo_pattern_t *pt1=(opts.fadeLines && (horiz ? rwidth : rheight)>(16+etchedDisp))
                           ? cairo_pattern_create_linear(rx, ry, horiz ? x2 : rx+1, horiz ? ry+1 : y2)
                           : NULL,
                     *pt2=(pt1 && LINE_FLAT!=type)
@@ -2620,7 +2620,7 @@ static void drawArrow(cairo_t *cr, GdkColor *col, GdkRectangle *area, GtkArrowTy
             }
             case GTK_ARROW_RIGHT:
             {
-                GdkPoint a[]={{x-1,y-3},  {x+2,y},  {x-1,y+3},   {x-2,y+3}, {x-2, y+2},  {x,y}, {x-2, y-2},  {x-2,y-3}};
+                GdkPoint a[]={{x-1,y+3},  {x+2,y},  {x-1,y-3},   {x-2,y-3}, {x-2, y-2},  {x,y}, {x-2, y+2},  {x-2,y+3}};
                 drawPolygon(cr, col, area, a, opts.vArrows ? 8 : 3, fill);
                 break;
             }
@@ -4042,13 +4042,6 @@ debugDisplayWidget(widget, 3);
                               &qtcPalette.menu, GT_HORIZ==opts.menuBgndGrad, FALSE, opts.menuBgndAppearance, WIDGET_OTHER);
         else if(USE_LIGHTER_POPUP_MENU)
             drawAreaColor(cr, area, NULL, &qtcPalette.menu, x, y, width, height);
-        else
-        {
-            drawHLine(cr, QTC_CAIRO_COL(qtcPalette.background[0]), 1.0, x+1, y+1, width-2);
-            drawVLine(cr, QTC_CAIRO_COL(qtcPalette.background[0]), 1.0, x+1, y+1, height-2);
-            drawHLine(cr, QTC_CAIRO_COL(qtcPalette.background[QT_FRAME_DARK_SHADOW]), 1.0, x+1, y+height-2, width-2);
-            drawVLine(cr, QTC_CAIRO_COL(qtcPalette.background[QT_FRAME_DARK_SHADOW]), 1.0, x+width-2, y+1, height-2);
-        }
 
         if(opts.menuStripe && opts.gtkMenuStripe && !isComboMenu(widget))
         {
@@ -4101,6 +4094,13 @@ debugDisplayWidget(widget, 3);
             cairo_set_source_rgb(cr, QTC_CAIRO_COL(qtcPalette.background[QT_STD_BORDER]));
             cairo_rectangle(cr, x+0.5, y+0.5, width-1, height-1);
             cairo_stroke(cr);
+            if(!USE_LIGHTER_POPUP_MENU)
+            {
+                drawHLine(cr, QTC_CAIRO_COL(qtcPalette.background[0]), 1.0, x+1, y+1, width-2);
+                drawVLine(cr, QTC_CAIRO_COL(qtcPalette.background[0]), 1.0, x+1, y+1, height-2);
+                drawHLine(cr, QTC_CAIRO_COL(qtcPalette.background[QT_FRAME_DARK_SHADOW]), 1.0, x+1, y+height-2, width-2);
+                drawVLine(cr, QTC_CAIRO_COL(qtcPalette.background[QT_FRAME_DARK_SHADOW]), 1.0, x+width-2, y+1, height-2);
+            }
         }
     }
     else if(detail &&(!strcmp(detail, "paned") || !strcmp(detail+1, "paned")))
@@ -4120,10 +4120,13 @@ debugDisplayWidget(widget, 3);
     }
     else if(DETAIL("hseparator"))
     {
-        int offset=opts.gtkMenuStripe && (isMozilla() || (widget && GTK_IS_MENU_ITEM(widget))) ? 20 : 0;
+        gboolean isMenuItem=widget && GTK_IS_MENU_ITEM(widget);
+
+        int offset=opts.gtkMenuStripe && (isMozilla() || isMenuItem) ? 20 : 0;
         if(offset && (GTK_APP_OPEN_OFFICE==qtSettings.app || isMozilla()))
             offset+=2;
-        drawFadedLine(cr, x+1+offset, y+(height>>1), width-(1+offset), 1, &qtcPalette.background[QT_STD_BORDER], area, NULL,
+        drawFadedLine(cr, x+1+offset, y+(height>>1), width-(1+offset), 1,
+                      &qtcPalette.background[isMenuItem ? QTC_MENU_SEP_SHADE : QT_STD_BORDER], area, NULL,
                       TRUE, TRUE, TRUE);
     }
     else if(DETAIL("vseparator"))
@@ -5771,9 +5774,15 @@ static void gtkDrawSlider(GtkStyle *style, GdkWindow *window, GtkStateType state
             GdkColor *markers=/*opts.coloredMouseOver && GTK_STATE_PRELIGHT==state
                                 ? qtcPalette.mouseover
                                 : */btn_colors;
+            gboolean horiz=GTK_ORIENTATION_HORIZONTAL==orientation;
                               
-            if(LINE_SUNKEN!=opts.sliderThumbs)
-                if(GTK_ORIENTATION_HORIZONTAL==orientation)
+            if(LINE_SUNKEN==opts.sliderThumbs)
+                if(horiz)
+                    y--, height++;
+                else
+                    x--, width++;
+            else
+                if(horiz)
                     x++;
                 else
                     y++;
@@ -5784,17 +5793,14 @@ static void gtkDrawSlider(GtkStyle *style, GdkWindow *window, GtkStateType state
 //                     drawDot(cr, x, y, width, height, markers);
 //                     break;
                 case LINE_FLAT:
-                    drawLines(cr, x, y, width, height,
-                              GTK_ORIENTATION_HORIZONTAL!=orientation, 3, 5, markers, area, 5, opts.sliderThumbs);
+                    drawLines(cr, x, y, width, height, !horiz, 3, 5, markers, area, 5, opts.sliderThumbs);
                     break;
                 case LINE_SUNKEN:
-                    drawLines(cr, x, y, width, height,
-                              GTK_ORIENTATION_HORIZONTAL!=orientation, 4, 3, markers, area, 3, opts.sliderThumbs);
+                    drawLines(cr, x, y, width, height, !horiz, 4, 3, markers, area, 3, opts.sliderThumbs);
                     break;
                 default:
                 case LINE_DOTS:
-                    drawDots(cr, x, y, width, height,
-                             GTK_ORIENTATION_HORIZONTAL!=orientation, scale ? 3 : 5, scale ? 4 : 2, markers, area, 0, 5);
+                    drawDots(cr, x, y, width, height, !horiz, scale ? 3 : 5, scale ? 4 : 2, markers, area, 0, 5);
             }
         }
     }

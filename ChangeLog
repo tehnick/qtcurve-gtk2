@@ -1,3 +1,11 @@
+0.67.5
+------
+1. Use same shade for all menu item separators.
+2. Fix clipping of non-V style right arrow.
+3. Dont draw 3D border around poup menus when border has been disabled, but
+   shading set to 0%
+4. Offset sunken slider thumbs to improve appearance.
+
 0.67.4
 ------
  1. If drawing square scrollviews, give these a similar 3d effect to rounded ones.
