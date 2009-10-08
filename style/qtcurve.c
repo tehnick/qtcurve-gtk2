@@ -1229,8 +1229,8 @@ static void drawBevelGradientAlpha(cairo_t *cr, GtkStyle *style, GdkRectangle *a
             }
             else
             {
-                double val=botTab ? INVERT_SHADE(grad->stops[i].val) : grad->stops[i].val;
-                shade(&opts, base, &col, botTab ? QTC_MAX(val, 0.9) : val);
+                double val=botTab && opts.invertBotTab ? INVERT_SHADE(grad->stops[i].val) : grad->stops[i].val;
+                shade(&opts, base, &col, botTab && opts.invertBotTab ? QTC_MAX(val, 0.9) : val);
             }
 
             cairo_pattern_add_color_stop_rgba(pt, botTab ? 1.0-grad->stops[i].pos : grad->stops[i].pos,
@@ -1380,15 +1380,16 @@ static void realDrawBorder(cairo_t *cr, GtkStyle *style, GtkStateType state, Gdk
             int    widthi=width-2,
                    heighti=height-2;
 
-            if((GTK_STATE_INSENSITIVE!=state || BORDER_SUNKEN==borderProfile) &&
-               (BORDER_RAISED==borderProfile || APPEARANCE_FLAT!=app))
+            if((GTK_STATE_INSENSITIVE!=state || BORDER_SUNKEN==borderProfile) /*&&
+               (BORDER_RAISED==borderProfile || BORDER_LIGHT==borderProfile || APPEARANCE_FLAT!=app)*/)
             {
-                GdkColor *col=col=&colors[BORDER_RAISED==borderProfile || BORDER_LIGHT==borderProfile
+                GdkColor *col=&colors[BORDER_RAISED==borderProfile || BORDER_LIGHT==borderProfile
                                             ? 0 : QT_FRAME_DARK_SHADOW];
                 if(flags&DF_BLEND)
                     cairo_set_source_rgba(cr, QTC_CAIRO_COL(*col), alpha);
                 else
                     cairo_set_source_rgb(cr, QTC_CAIRO_COL(*col));
+                
             }
             else
                 cairo_set_source_rgb(cr, QTC_CAIRO_COL(style->bg[state]));
@@ -1402,10 +1403,10 @@ static void realDrawBorder(cairo_t *cr, GtkStyle *style, GtkStateType state, Gdk
                         cairo_set_source_rgb(cr, QTC_CAIRO_COL(style->bg[state]));
                     else if(WIDGET_ENTRY==widget && !hasFocus)
                         cairo_set_source_rgb(cr, QTC_CAIRO_COL(style->base[state]));
-                    else if(GTK_STATE_INSENSITIVE!=state && (BORDER_SUNKEN==borderProfile || APPEARANCE_FLAT!=app ||
+                    else if(GTK_STATE_INSENSITIVE!=state && (BORDER_SUNKEN==borderProfile || /*APPEARANCE_FLAT!=app ||*/
                                                             WIDGET_TAB_TOP==widget || WIDGET_TAB_BOT==widget))
                     {
-                        GdkColor *col=col=&colors[BORDER_RAISED==borderProfile ? QT_FRAME_DARK_SHADOW : 0];
+                        GdkColor *col=&colors[BORDER_RAISED==borderProfile ? QT_FRAME_DARK_SHADOW : 0];
                         if(flags&DF_BLEND)
                             cairo_set_source_rgba(cr, QTC_CAIRO_COL(*col), BORDER_SUNKEN==borderProfile ? 0.0 : alpha);
                         else
@@ -2362,6 +2363,19 @@ debugDisplayWidget(widget, 3);
         }
     }
 
+    if (opts.menubarHiding && widget && GTK_IS_WINDOW(widget) && !isFixedWidget(widget) && !isGimpDockable(widget) &&
+       (!widget->name || strcmp(widget->name, "gtk-tooltip")))
+    {
+        qtcWindowSetup(widget);
+        if(qtcMenuBarHidden(qtSettings.appName))
+        {
+            GtkWidget *menuBar=qtcWindowGetMenuBar(widget, 0);
+
+            if(menuBar)
+                gtk_widget_hide(menuBar);
+        }
+    }
+
     if(!IS_FLAT(opts.bgndAppearance) && widget && GTK_IS_WINDOW(widget) &&
        drawBgndGradient(cr, style, area, widget, x, y, width, height))
         qtcWindowSetup(widget);
@@ -2549,8 +2563,10 @@ debugDisplayWidget(widget, 3);
     QTC_CAIRO_END
 }
 
-static void drawPolygon(cairo_t *cr, GdkColor *col, GdkRectangle *area, GdkPoint *points, int npoints, gboolean fill)
+static void drawPolygon(GdkWindow *window, GtkStyle *style, GdkColor *col, GdkRectangle *area, GdkPoint *points, int npoints, gboolean fill)
 {
+#ifdef QTC_USE_CAIRO_FOR_ARROWS
+    QTC_CAIRO_BEGIN
     int               i;
     cairo_antialias_t aa=cairo_get_antialias(cr);
     setCairoClipping(cr, area, NULL);
@@ -2565,9 +2581,32 @@ static void drawPolygon(cairo_t *cr, GdkColor *col, GdkRectangle *area, GdkPoint
         cairo_fill(cr);
     cairo_set_antialias(cr, aa);
     unsetCairoClipping(cr);
+    QTC_CAIRO_END
+#else
+    QtCurveStyle *qtcurveStyle = (QtCurveStyle *)style;
+
+    if(!qtcurveStyle->arrow_gc)
+    {
+        qtcurveStyle->arrow_gc=gdk_gc_new(window);
+        g_object_ref(qtcurveStyle->arrow_gc); 
+    }
+
+    gdk_rgb_find_color(style->colormap, col);
+    gdk_gc_set_foreground(qtcurveStyle->arrow_gc, col);
+    
+    if(area)
+        gdk_gc_set_clip_rectangle(qtcurveStyle->arrow_gc, area);
+
+    gdk_draw_polygon(window, qtcurveStyle->arrow_gc, FALSE, points, npoints);
+    if(fill)
+        gdk_draw_polygon(window, qtcurveStyle->arrow_gc, TRUE, points, npoints);
+
+    if(area)
+        gdk_gc_set_clip_rectangle(qtcurveStyle->arrow_gc, NULL);
+#endif
 }
 
-static void drawArrow(cairo_t *cr, GdkColor *col, GdkRectangle *area, GtkArrowType arrow_type,
+static void drawArrow(GdkWindow *window, GtkStyle *style, GdkColor *col, GdkRectangle *area, GtkArrowType arrow_type,
                       gint x, gint y, gboolean small, gboolean fill)
 {
     if(small)
@@ -2576,25 +2615,25 @@ static void drawArrow(cairo_t *cr, GdkColor *col, GdkRectangle *area, GtkArrowTy
             case GTK_ARROW_UP:
             {
                 GdkPoint a[]={{x+2,y},  {x,y-2},  {x-2,y},   {x-2,y+1}, {x,y-1}, {x+2,y+1}};
-                drawPolygon(cr, col, area, a, opts.vArrows ? 6 : 3, fill);
+                drawPolygon(window, style, col, area, a, opts.vArrows ? 6 : 3, fill);
                 break;
             }
             case GTK_ARROW_DOWN:
             {
                 GdkPoint a[]={{x+2,y},  {x,y+2},  {x-2,y},   {x-2,y-1}, {x,y+1}, {x+2,y-1}};
-                drawPolygon(cr, col, area, a, opts.vArrows ? 6 : 3, fill);
+                drawPolygon(window, style, col, area, a, opts.vArrows ? 6 : 3, fill);
                 break;
             }
             case GTK_ARROW_RIGHT:
             {
                 GdkPoint a[]={{x,y-2},  {x+2,y},  {x,y+2},   {x-1,y+2}, {x+1,y}, {x-1,y-2}};
-                drawPolygon(cr, col, area, a, opts.vArrows ? 6 : 3, fill);
+                drawPolygon(window, style, col, area, a, opts.vArrows ? 6 : 3, fill);
                 break;
             }
             case GTK_ARROW_LEFT:
             {
                 GdkPoint a[]={{x,y-2},  {x-2,y},  {x,y+2},   {x+1,y+2}, {x-1,y}, {x+1,y-2}};
-                drawPolygon(cr, col, area, a, opts.vArrows ? 6 : 3, fill);
+                drawPolygon(window, style, col, area, a, opts.vArrows ? 6 : 3, fill);
                 break;
             }
             default:
@@ -2606,25 +2645,25 @@ static void drawArrow(cairo_t *cr, GdkColor *col, GdkRectangle *area, GtkArrowTy
             case GTK_ARROW_UP:
             {
                 GdkPoint a[]={{x+3,y+1},  {x,y-2},  {x-3,y+1},    {x-3, y+2},  {x-2, y+2}, {x,y},  {x+2, y+2}, {x+3,y+2}};
-                drawPolygon(cr, col, area, a, opts.vArrows ? 8 : 3, fill);
+                drawPolygon(window, style, col, area, a, opts.vArrows ? 8 : 3, fill);
                 break;
             }
             case GTK_ARROW_DOWN:
             {
                 GdkPoint a[]={{x+3,y-1},  {x,y+2},  {x-3,y-1},   {x-3,y-2},  {x-2, y-2}, {x,y}, {x+2, y-2}, {x+3,y-2}};
-                drawPolygon(cr, col, area, a, opts.vArrows ? 8 : 3, fill);
+                drawPolygon(window, style, col, area, a, opts.vArrows ? 8 : 3, fill);
                 break;
             }
             case GTK_ARROW_RIGHT:
             {
                 GdkPoint a[]={{x-1,y+3},  {x+2,y},  {x-1,y-3},   {x-2,y-3}, {x-2, y-2},  {x,y}, {x-2, y+2},  {x-2,y+3}};
-                drawPolygon(cr, col, area, a, opts.vArrows ? 8 : 3, fill);
+                drawPolygon(window, style, col, area, a, opts.vArrows ? 8 : 3, fill);
                 break;
             }
             case GTK_ARROW_LEFT:
             {
                 GdkPoint a[]={{x+1,y-3},  {x-2,y},  {x+1,y+3},   {x+2,y+3}, {x+2, y+2},  {x,y}, {x+2, y-2},  {x+2,y-3}};
-                drawPolygon(cr, col, area, a, opts.vArrows ? 8 : 3, fill);
+                drawPolygon(window, style, col, area, a, opts.vArrows ? 8 : 3, fill);
                 break;
             }
             default:
@@ -2637,8 +2676,6 @@ static void gtkDrawArrow(GtkStyle *style, GdkWindow *window, GtkStateType state,
                          const gchar *detail, GtkArrowType arrow_type,
                          gboolean fill, gint x, gint y, gint width, gint height)
 {
-    QTC_CAIRO_BEGIN
-
 #ifdef QTC_DEBUG
 printf("Draw arrow %d %d %d %d %d %d %d %s  ", state, shadow, arrow_type, x, y, width, height, detail ? detail : "NULL");
 debugDisplayWidget(widget, 3);
@@ -2652,21 +2689,24 @@ debugDisplayWidget(widget, 3);
             GdkColor *arrowColor=QTC_MO_ARROW(false, &qtSettings.colors[GTK_STATE_INSENSITIVE==state
                                                                             ? PAL_DISABLED : PAL_ACTIVE]
                                                                        [COLOR_BUTTON_TEXT]);
+            //gboolean moz=isMozilla() && widget && widget->parent && widget->parent->parent && widget->parent->parent->parent &&
+            //             isFixedWidget(widget->parent->parent->parent);
             x++;
 
-            if(!QTC_DO_EFFECT)
+            // NOTE: Dont do this for moz - as looks odd fir widgets in HTML pages - arrow is shifted too much :-(
+            if(!QTC_DO_EFFECT) // || moz)
                 x+=2;
 
             if(opts.doubleGtkComboArrow)
             {
                 int pad=opts.vArrows ? 0 : 1;
-                drawArrow(cr, arrowColor, area,  GTK_ARROW_UP,
+                drawArrow(window, style, arrowColor, area,  GTK_ARROW_UP,
                           x+(width>>1), y+(height>>1)-(LARGE_ARR_HEIGHT-pad), FALSE, TRUE);
-                drawArrow(cr, arrowColor, area,  GTK_ARROW_DOWN,
+                drawArrow(window, style, arrowColor, area,  GTK_ARROW_DOWN,
                           x+(width>>1), y+(height>>1)+(LARGE_ARR_HEIGHT-pad), FALSE, TRUE);
             }
             else
-                drawArrow(cr, arrowColor, area,  GTK_ARROW_DOWN, x+(width>>1), y+(height>>1), FALSE, TRUE);
+                drawArrow(window, style, arrowColor, area,  GTK_ARROW_DOWN, x+(width>>1), y+(height>>1), FALSE, TRUE);
         }
         else
         {
@@ -2677,7 +2717,7 @@ debugDisplayWidget(widget, 3);
                                             : &style->text[QTC_ARROW_STATE(state)];
             if(onComboEntry && GTK_STATE_ACTIVE==state && opts.unifyCombo)
                 x--, y--;
-            drawArrow(cr, QTC_MO_ARROW(false, col), area,  arrow_type, x+(width>>1), y+(height>>1), FALSE, TRUE);
+            drawArrow(window, style, QTC_MO_ARROW(false, col), area,  arrow_type, x+(width>>1), y+(height>>1), FALSE, TRUE);
         }
     }
     else
@@ -2776,10 +2816,9 @@ debugDisplayWidget(widget, 3);
                         ? &qtSettings.colors[GTK_STATE_INSENSITIVE==state ? PAL_DISABLED : PAL_ACTIVE][COLOR_BUTTON_TEXT]
                         : &style->text[QTC_IS_MENU_ITEM(widget) && GTK_STATE_PRELIGHT==state
                                         ? GTK_STATE_SELECTED : QTC_ARROW_STATE(state)];
-        drawArrow(cr, QTC_MO_ARROW(isMenuItem, col), area, arrow_type, x, y, smallArrows, TRUE);
+        drawArrow(window, style, QTC_MO_ARROW(isMenuItem, col), area, arrow_type, x, y, smallArrows, TRUE);
         }
     }
-    QTC_CAIRO_END
 }
 
 static void drawBox(GtkStyle *style, GdkWindow *window, GtkStateType state,
@@ -3213,11 +3252,16 @@ debugDisplayWidget(widget, 3);
                     // determine the button associated with it. So, we store the mapping here...
                     if(!mozToolbar && widget->parent && GTK_IS_COMBO_BOX_ENTRY(widget->parent))
                         qtcWidgetMapSetup(widget->parent, widget, 0);
+                    // If the button is disabled, but the entry field is not - then use entry field's state
+                    // for the button. This fixes an issue with LinuxDC++ and Gtk 2.18
+                    if(GTK_STATE_INSENSITIVE==state && entry && GTK_STATE_INSENSITIVE!=entry->state)
+                        state=entry->state;
                     drawEntryField(cr, style, state, entry, area, x, y, width, height, rev ? ROUNDED_LEFT : ROUNDED_RIGHT,
                                    WIDGET_COMBO_BUTTON);
                     // Get entry to redraw by setting its state...
                     // ...cant do a queue redraw, as then entry does for the button, else we get stuck in a loop!
-                    if(!mozToolbar && widget && entry && entry->state!=widget->state && GTK_STATE_INSENSITIVE!=entry->state)
+                    if(!mozToolbar && widget && entry && entry->state!=widget->state && GTK_STATE_INSENSITIVE!=entry->state &&
+                       GTK_STATE_INSENSITIVE!=state)
                         gtk_widget_set_state(entry, state);
                 }
                 else if(opts.flatSbarButtons && WIDGET_SB_BUTTON==widgetType)
@@ -5173,8 +5217,15 @@ static void gtkDrawTab(GtkStyle *style, GdkWindow *window, GtkStateType state,
                        const gchar *detail, gint x, gint y, gint width, gint height)
 {
     QtCurveStyle *qtcurveStyle = (QtCurveStyle *)style;
+    GdkColor     *arrowColor=QTC_MO_ARROW(false, &qtSettings.colors[GTK_STATE_INSENSITIVE==state
+                                                                            ? PAL_DISABLED : PAL_ACTIVE]
+                                                                   [COLOR_BUTTON_TEXT]);
     //if(QTC_DO_EFFECT)
     //    x--;
+#ifdef QTC_DEBUG
+printf("Draw tab %d %d %s  ", state, shadow_type, detail ? detail : "NULL");
+debugDisplayWidget(widget, 5);
+#endif
 
     if(isActiveCombo(widget))
         x++, y++;
@@ -5183,19 +5234,16 @@ static void gtkDrawTab(GtkStyle *style, GdkWindow *window, GtkStateType state,
                 ? x+1
                 : x+(width>>1);
 
-    QTC_CAIRO_BEGIN
-//     if(opts.singleComboArrow)
-        drawArrow(cr, &qtSettings.colors[GTK_STATE_INSENSITIVE==state ? PAL_DISABLED : PAL_ACTIVE][COLOR_BUTTON_TEXT], NULL,
-                  GTK_ARROW_DOWN, x, y+(height>>1), FALSE, TRUE);
-//     else
-//     {
-//         drawArrow(window, qtcurveStyle->button_text_gc[GTK_STATE_INSENSITIVE==state ? PAL_DISABLED : PAL_ACTIVE], NULL, GTK_ARROW_UP, x,
-//                   y+(height>>1)-(LARGE_ARR_HEIGHT-1), FALSE, TRUE);
-//         drawArrow(window, qtcurveStyle->button_text_gc[GTK_STATE_INSENSITIVE==state ? PAL_DISABLED : PAL_ACTIVE], NULL, GTK_ARROW_DOWN, x,
-//                   y+(height>>1)+(LARGE_ARR_HEIGHT-1), FALSE, TRUE);
-//     }
-
-    QTC_CAIRO_END
+    if(opts.doubleGtkComboArrow)
+    {
+        int pad=opts.vArrows ? 0 : 1;
+        drawArrow(window, style, arrowColor, area,  GTK_ARROW_UP,
+                  x, y+(height>>1)-(LARGE_ARR_HEIGHT-pad), FALSE, TRUE);
+        drawArrow(window, style, arrowColor, area,  GTK_ARROW_DOWN,
+                  x, y+(height>>1)+(LARGE_ARR_HEIGHT-pad), FALSE, TRUE);
+    }
+    else
+        drawArrow(window, style, arrowColor, area,  GTK_ARROW_DOWN, x, y+(height>>1), FALSE, TRUE);
 }
 
 static void gtkDrawBoxGap(GtkStyle *style, GdkWindow *window, GtkStateType state,
@@ -6282,7 +6330,7 @@ static void gtkDrawResizeGrip(GtkStyle *style, GdkWindow *window, GtkStateType s
             GdkPoint a[]={{ x+width,       (y+height)-size},
                           { x+width,        y+height},
                           {(x+width)-size,  y+height}};
-            drawPolygon(cr, &qtcPalette.background[2], area, a, 3, TRUE);
+            drawPolygon(window, style, &qtcPalette.background[2], area, a, 3, TRUE);
             break;
         }
         case GDK_WINDOW_EDGE_SOUTH_WEST:
@@ -6290,7 +6338,7 @@ static void gtkDrawResizeGrip(GtkStyle *style, GdkWindow *window, GtkStateType s
             GdkPoint a[]={{(x+width)-size, (y+height)-size},
                           { x+width,        y+height},
                           {(x+width)-size,  y+height}};
-            drawPolygon(cr, &qtcPalette.background[2], area, a, 3, TRUE);
+            drawPolygon(window, style, &qtcPalette.background[2], area, a, 3, TRUE);
             break;
         }
         case GDK_WINDOW_EDGE_NORTH_EAST:
@@ -6321,13 +6369,11 @@ debugDisplayWidget(widget, 5);
     x-=QTC_LV_SIZE>>1;
     y-=QTC_LV_SIZE>>1;
 
-    QTC_CAIRO_BEGIN
     if(GTK_EXPANDER_COLLAPSED==expander_style)
-        drawArrow(cr, col, area, reverseLayout(widget) ? GTK_ARROW_LEFT : GTK_ARROW_RIGHT,
+        drawArrow(window, style, col, area, reverseLayout(widget) ? GTK_ARROW_LEFT : GTK_ARROW_RIGHT,
                   x+(LARGE_ARR_WIDTH>>1), y+LARGE_ARR_HEIGHT, FALSE, fill);
     else
-        drawArrow(cr, col, area, GTK_ARROW_DOWN, x+(LARGE_ARR_WIDTH>>1), y+LARGE_ARR_HEIGHT, FALSE, fill);
-    QTC_CAIRO_END
+        drawArrow(window, style, col, area, GTK_ARROW_DOWN, x+(LARGE_ARR_WIDTH>>1), y+LARGE_ARR_HEIGHT, FALSE, fill);
 }
 
 static void styleRealize(GtkStyle *style)
@@ -6352,6 +6398,9 @@ static void styleRealize(GtkStyle *style)
         qtcurveStyle->lv_lines_gc=realizeColors(style, &qtSettings.colors[PAL_ACTIVE][COLOR_MID]);
     else
         qtcurveStyle->lv_lines_gc=NULL;
+#ifndef QTC_USE_CAIRO_FOR_ARROWS
+    qtcurveStyle->arrow_gc=NULL;
+#endif
 }
 
 static void styleUnrealize(GtkStyle *style)
@@ -6374,6 +6423,14 @@ static void styleUnrealize(GtkStyle *style)
         gtk_gc_release(qtcurveStyle->lv_lines_gc);
         qtcurveStyle->lv_lines_gc=NULL;
     }
+
+#ifndef QTC_USE_CAIRO_FOR_ARROWS
+    if(qtcurveStyle->arrow_gc)
+    {
+        g_object_unref(qtcurveStyle->arrow_gc);
+        qtcurveStyle->arrow_gc=NULL;
+    }
+#endif
 }
 
 static void generateColors()

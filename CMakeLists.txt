@@ -7,8 +7,8 @@ set(DEBIAN_PACKAGE_DESCRIPTION "QtCurve for Gtk2")
 set(DEBIAN_PACKAGE_SECTION "gtk")
 set(CPACK_SOURCE_GENERATOR "TBZ2")
 set(CPACK_PACKAGE_VERSION_MAJOR "0")
-set(CPACK_PACKAGE_VERSION_MINOR "68")
-set(CPACK_PACKAGE_VERSION_PATCH "1")
+set(CPACK_PACKAGE_VERSION_MINOR "69")
+set(CPACK_PACKAGE_VERSION_PATCH "0")
 set(CPACK_PACKAGE_CONTACT "Craig Drummond <craig_p_drummond@yahoo.co.uk>")
 set(QTCURVE_VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}")
 set(QTCURVE_VERSION_FULL "${QTCURVE_VERSION}.${CPACK_PACKAGE_VERSION_PATCH}")
@@ -144,6 +144,17 @@ if (GTK_INCLUDE_DIR)
                 "**************************************************************\n"
                 "**************************************************************\n")
     endif(QTC_MODIFY_MOZILLA)
+
+    if(QTC_USE_CAIRO_FOR_ARROWS)
+        message("\n**************************************************************\n"
+                "Warning: Using ciaro to draw arrows - this has been reported to \n"
+                "         fail with intel Xorg driver > 2.8\n"
+                "**************************************************************\n")
+    else(QTC_USE_CAIRO_FOR_ARROWS)
+        message("\n**************************************************************\n"
+                "Information: Using Gdk to draw arrows.\n"
+                "**************************************************************\n")
+    endif(QTC_USE_CAIRO_FOR_ARROWS)
 else (GTK_INCLUDE_DIR)
     message(FATAL_ERROR "Could not locate Gtk2 include files")
 endif (GTK_INCLUDE_DIR)

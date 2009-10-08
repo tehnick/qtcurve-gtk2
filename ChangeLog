@@ -1,3 +1,23 @@
+0.69.0
+------
+1. Add option to control whether bottom tabs should have their gradient
+   shades inverted.
+2. Config files now stored under $XDG_CONFIG_HOME/qtcurve (e.g. ~/.config/qtcurve)
+3. Fix some issue with 'flat' appearance.
+4. Add an experimental option to hide/unhide menubars using Ctrl-Alt-M.
+5. Respect double arrow setting for non-editable combos on more Gtk2
+   combo types. (Affects combos in pidgin.)
+6. Colour arrows on mouse over of non-editable combos on more Gtk2
+   combo types. (Affects combos in pidgin.)
+7. Fix disabled editable combos.
+8. It has been reported that under intel Xorg drivers > 2.8, that QtCurve's
+   arrows are not appearing. This seems to be due to the fact that QtCurve is
+   using cairo to draw non-antialised lines in this case. To work-around this
+   issue QtCurve has been changed to use the older Gdk to draw arrows. To
+   revert back to cairo, use the following cmake option:
+
+    -DQTC_USE_CAIRO_FOR_ARROWS=true
+
 0.68.1
 ------
 1. Fix reading of 'dark inverted gradient' setting.
