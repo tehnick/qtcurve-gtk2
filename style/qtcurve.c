@@ -1681,7 +1681,7 @@ static void drawLightBevel(cairo_t *cr, GtkStyle *style, GdkWindow *window, GtkS
                      horizontal=WIDGET_SB_SLIDER==widget ? !horiz
                                                     : (horiz && WIDGET_SB_BUTTON!=widget) ||
                                                         (!horiz && WIDGET_SB_BUTTON==widget);
-        int          len=WIDGET_SB_SLIDER==widget ? QTC_SB_SLIDER_MO_LEN(horiz ? width : height)+1 : (thin ? 1 : 2);
+        int          len=WIDGET_SB_SLIDER==widget ? QTC_SB_SLIDER_MO_LEN(horiz ? width : height) : (thin ? 1 : 2);
         GdkRectangle rect;
         if(horizontal)
             rect.x=x, rect.y=y+len, rect.width=width, rect.height=height-(len*2);
@@ -3374,7 +3374,7 @@ debugDisplayWidget(widget, 3);
 
                     btn.x=cx + (rev ? ind_width+QT_STYLE->xthickness
                                     : (cwidth - ind_width - QT_STYLE->xthickness)+1),
-                    btn.y=y, btn.width=ind_width+4, btn.height=height;
+                    btn.y=y, btn.width=ind_width+3, btn.height=height;
 
                     if(!opts.comboSplitter)
                         setCairoClipping(cr, &btn, NULL);
@@ -3439,7 +3439,7 @@ debugDisplayWidget(widget, 3);
                                         ? getFillReal(state, btn_down, true) : bgnd;
                                         
                         btn.x=vx+(rev ? LARGE_ARR_WIDTH+4 : 0),
-                        btn.y=y, btn.width=20+4, btn.height=height;
+                        btn.y=y, btn.width=20+3, btn.height=height;
 
                         if(!opts.comboSplitter)
                             setCairoClipping(cr, &btn, NULL);
