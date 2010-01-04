@@ -1,3 +1,71 @@
+1.0.0
+-----
+ 1. Added option to colour selected check/radios.
+ 2. Added option to use a smaller dot for radios.
+ 3. Made check/radio and splitter highlight options a configurable % - i.e.
+    not based on standard hightlight %
+ 4. Added option to set expander highlight factor.
+ 5. When highlighting check/radio/splitter/expander background, round the corners and
+    use the selection gradient.
+ 6. Default check/radio/splitter/expander highlight set to 3%
+ 7. Added new splitter/handle/thumb style: single dot.
+ 8. Don't do coloured mouse over for buttons of editable combos, spin buttons,
+    or scrollbar buttons.
+ 9. Don't do regular coloured mouse over of sliders when these are set to be
+    coloured on mouse over.
+10. Allow to specify strength when colouring selected tab.
+11. Remove support for QtCurve styles (these appear as unique KDE styles in the
+    main KDE style selection dialog). Re-enable support by passing
+    -DQTC_STYLE_SUPPORT=true to cmake.
+12. Slightly lighter shade used for coloured mouse over of arrows.
+13. Dont draw border around rounded selection.
+14. Fix internal padding of scrolled windows where scrollbars are within window.
+15. When drawing frames, respect shadow state (in/out).
+16. Draw Inkscape and Anjuta sidebar buttons as per QtCurve's KDE style.
+17. Improve appearance of unified spin widgets under Firefox.
+18. Don't draw background of dock widgets as if they were toolbars!
+19. Only draw toolbar/menubar background if shadow type is not set to none.
+    (Removes toolbar gradient from Rhythmbox's search buttons)
+20. Reduce thickness of menu toolbar buttons (e.g. the buttons with just the arrow)
+21. Better match of line-edit and spinbutton heights to KDE4.
+22. If user is using menubar colouring, and this would require changing the text
+    colour, then need to modify the user's userChrome.css for this - regardless
+    of the QTC_MODIFY_MOZILLA cmake option.
+23. If editing/creating userChrome.css and chrome folder does not exist, then
+    create it.
+24. Theme icon view selections.
+25. Theme entry progress.
+26. Supply a default kdeglobs file (installed into QtCurve's gtk-2.0 folder) so
+    as to allow easy modifications of default settings.
+27. Added option to draw Air-like background rings in windows and/or menus.
+    Note: to use an SVG instead of the hard-coded air-like rings, edit
+          ~/.config/qtcurve/stylerc (or /etc/qtcurvestylerc) and add:
+
+          bgndImage=file
+          bgndImage.file=/path/to/svg/file.svg
+          bgndImage.width=120
+          bgndImage.height=160
+          
+          (Use menuBgndImage for menus)
+
+28. Added option to add a 'glow' to progressbars.
+29. Use listview header appearance setting for background of rulers.
+30. To disable background gradient, or image,  for a particular app, edit
+    ~/.config/qtcurve/stylerc  and add:
+        noBgndGradientApps=inkscape,gimp
+        noBgndImageApps=inkscape,gimp
+
+    ...using 'gtk' (e.g. noBgndImageApps=gtk) will disable for all Gtk apps.
+31. Removed the '-DQTC_REORDER_GTK_DIALOG_BUTTONS=true' cmake option, and replaced
+    with a config option.
+32. Draw Preview button in GIMP file dialog as a listview header.
+33. Fix crashes with 'deadbeef' (??) 0.3.1 - need to check widget pointer before
+    calling GTK_WIDGET_??? macros.
+34. Dont max round toggle buttons that are almost square, or GIMPs GimpViewableButtons
+35. gtkMenuStripe option replaced by noMenuStripeApps option. noMenuStripeApps=gtk is
+    the equivalent of gtkMenuStripe=false
+36. Better Agua gradients for large buttons.
+
 0.69.2
 ------
 1. If a scrollbar slider is maxed-out, then shade it as disabled - matches KDE.

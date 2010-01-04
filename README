@@ -30,11 +30,6 @@ The following options may be supplied to cmake:
                     ~/.thunderbird/xxxxxxx.default/chrome/userChrome.css
               Where xxxxxxx is a series of random characters.
 
-    -DQTC_REORDER_GTK_DIALOG_BUTTONS=true
-       When set QtCurve will try to manually re-order the buttons of Gtk
-       dialogs. Note: This will cause errors to be printed to the console,
-       and is only an experiment!
-
     -DQTC_DEFAULT_TO_KDE3=true
        If the KDE_SESSION_VERSION is not set, then assume we are running
        under KDE3. If this cmake option is not set, then KDE4 is assumed.
@@ -43,6 +38,10 @@ The following options may be supplied to cmake:
        Use Cairo, and not Gdk, to draw the non-antialised arrows. It has been reported
        that for intel Xorg drivers >2.8, that drawing these non-antialised arrows with
        cairo results in nothing being drawn! As of 0.69.0, the default is to use Gdk
+
+    -DQTC_STYLE_SUPPORT=true
+       Support QtCurve style files. These are stored as
+       <kde prefix>/share/apps/kstyle/themes/qtc_<stylename>.themerc
 
 Themes
 ------
@@ -94,6 +93,7 @@ To regenerate this, run the following:
     gdk-pixbuf-csource --raw --name radio_inner radio_inner.png >> pixmaps.h
     gdk-pixbuf-csource --raw --name radio_light radio_light.png >> pixmaps.h
     gdk-pixbuf-csource --raw --name radio_on radio_on.png >> pixmaps.h
+    gdk-pixbuf-csource --raw --name radio_on_small radio_on_small.png >> pixmaps.h
     gdk-pixbuf-csource --raw --name check_on check_on.png >> pixmaps.h
     gdk-pixbuf-csource --raw --name slider slider.png >> pixmaps.h
     gdk-pixbuf-csource --raw --name slider_light slider_light.png >> pixmaps.h
