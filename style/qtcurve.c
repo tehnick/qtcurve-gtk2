@@ -993,7 +993,7 @@ static GdkColor * getParentBgCol(GtkWidget *widget)
 
 static void setLowerEtchCol(cairo_t *cr, GtkWidget *widget)
 {
-    if(!QTC_CUSTOM_BGND && (!widget || !g_object_get_data(G_OBJECT (widget), "transparent-bg-hint")))
+    if(IS_FLAT(opts.bgndAppearance) && (!widget || !g_object_get_data(G_OBJECT (widget), "transparent-bg-hint")))
     {
         GdkColor *parentBg=getParentBgCol(widget);
 
@@ -1005,10 +1005,10 @@ static void setLowerEtchCol(cairo_t *cr, GtkWidget *widget)
             cairo_set_source_rgb(cr, QTC_CAIRO_COL(col));
         }
         else
-            cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.25);
+            cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.1); // 0.25);
     }
     else
-        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.4);
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.1); // 0.4);
 }
 
 static void drawBgnd(cairo_t *cr, GdkColor *col, GtkWidget *widget,
@@ -1539,7 +1539,10 @@ static void drawEtch(cairo_t *cr, GdkRectangle *area, GdkRegion *region,
     {
         createTLPath(cr, xd, yd, w-1, h-1, radius, round);
         cairo_stroke(cr);
-        setLowerEtchCol(cr, widget);
+        if(WIDGET_SLIDER_TROUGH==wid && opts.thinSbarGroove && widget && GTK_IS_SCROLLBAR(widget))
+            cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.1); // 0.25);
+        else
+            setLowerEtchCol(cr, widget);
     }
 
     createBRPath(cr, xd, yd, w-1, h-1, radius, round);
@@ -2771,7 +2774,7 @@ debugDisplayWidget(widget, 3);
     {
         if(GTK_STATE_PRELIGHT==state && opts.splitterHighlight)
         {
-            GdkColor col=shadeColor(&style->bg[state], opts.splitterHighlight);
+            GdkColor col=shadeColor(&style->bg[state], QTC_TO_FACTOR(opts.splitterHighlight));
             drawSelectionReal(cr, style, state, area, widget, x, y, width, height, ROUNDED_ALL, TRUE, 1.0, &col,
                               width>height);
         }
@@ -2780,7 +2783,7 @@ debugDisplayWidget(widget, 3);
     {
         if(GTK_STATE_PRELIGHT==state && opts.crHighlight && width>(QTC_CHECK_SIZE*2))
         {
-            GdkColor col=shadeColor(&style->bg[state], opts.crHighlight);
+            GdkColor col=shadeColor(&style->bg[state], QTC_TO_FACTOR(opts.crHighlight));
             drawSelectionReal(cr, style, state, area, widget, x, y, width, height, ROUNDED_ALL, TRUE, 1.0, &col, TRUE);
         }
     }
@@ -2788,7 +2791,7 @@ debugDisplayWidget(widget, 3);
     {
         if(GTK_STATE_PRELIGHT==state && opts.expanderHighlight)
         {
-            GdkColor col=shadeColor(&style->bg[state], opts.expanderHighlight);
+            GdkColor col=shadeColor(&style->bg[state], QTC_TO_FACTOR(opts.expanderHighlight));
             drawSelectionReal(cr, style, state, area, widget, x, y, width, height, ROUNDED_ALL, TRUE, 1.0, &col, TRUE);
         }
     }
