@@ -1584,6 +1584,9 @@ static void drawLightBevel(cairo_t *cr, GtkStyle *style, GtkStateType state,
     int         xe=x, ye=y, we=width, he=height, origWidth=width, origHeight=height;
     double      xd=x+0.5, yd=y+0.5;
 
+    if(WIDGET_TROUGH==widget && !opts.borderSbarGroove && flags&DF_DO_BORDER)
+        flags-=DF_DO_BORDER;
+
     if(WIDGET_COMBO_BUTTON==widget && doEtch)
         if(ROUNDED_RIGHT==round)
             x--, xd-=1, width++;
@@ -1595,7 +1598,16 @@ static void drawLightBevel(cairo_t *cr, GtkStyle *style, GtkStateType state,
 
     if(width>0 && height>0)
     {
-        clipPath(cr, x, y, width, height, widget, RADIUS_EXTERNAL, round);
+        if(!(flags&DF_DO_BORDER))
+        {
+            cairo_new_path(cr);
+            cairo_save(cr);
+            createPath(cr, x, y, width, height, getRadius(&opts, width, height, widget, RADIUS_EXTERNAL), round);
+            cairo_clip(cr);
+        }
+        else
+            clipPath(cr, x, y, width, height, widget, RADIUS_EXTERNAL, round);
+
         drawBevelGradient(cr, style, area, region, x, y, width, height, base, horiz,
                           sunken && !IS_TROUGH(widget), app, widget);
 
@@ -2180,27 +2192,27 @@ static void drawBgndRings(cairo_t *cr, gint y, int width, gboolean isWindow)
                 crImg=cairo_image_surface_create(CAIRO_FORMAT_ARGB32, imgWidth+1, imgHeight+1);
                 ci=cairo_create(crImg);
 
-                cairo_set_source_rgba(ci, 1.0, 1.0, 1.0, QTC_RINGS_SQUARE_ALPHA);
+                cairo_set_source_rgba(ci, 1.0, 1.0, 1.0, QTC_RINGS_SQUARE_SMALL_ALPHA);
                 cairo_set_line_width(ci, QTC_RINGS_SQUARE_LINE_WIDTH);
                 createPath(ci, halfWidth+0.5, halfWidth+0.5, QTC_RINGS_SQUARE_SMALL_SIZE, QTC_RINGS_SQUARE_SMALL_SIZE,
                                QTC_RINGS_SQUARE_RADIUS, ROUNDED_ALL);
                 cairo_stroke(ci);
 
                 cairo_new_path(ci);
-                cairo_set_source_rgba(ci, 1.0, 1.0, 1.0, QTC_RINGS_SQUARE_ALPHA);
-                cairo_set_line_width(ci, QTC_RINGS_SQUARE_LINE_WIDTH);
-                createPath(ci, halfWidth+0.5+((imgWidth-QTC_RINGS_SQUARE_LARGE_SIZE-QTC_RINGS_SQUARE_LINE_WIDTH)/2.0),
-                               halfWidth+0.5+((imgHeight-QTC_RINGS_SQUARE_LARGE_SIZE-QTC_RINGS_SQUARE_LINE_WIDTH)/2.0),
-                               QTC_RINGS_SQUARE_LARGE_SIZE, QTC_RINGS_SQUARE_LARGE_SIZE,
-                               QTC_RINGS_SQUARE_RADIUS, ROUNDED_ALL);
-                cairo_stroke(ci);
-
-                cairo_new_path(ci);
-                cairo_set_source_rgba(ci, 1.0, 1.0, 1.0, QTC_RINGS_SQUARE_ALPHA);
+                cairo_set_source_rgba(ci, 1.0, 1.0, 1.0, QTC_RINGS_SQUARE_SMALL_ALPHA);
                 cairo_set_line_width(ci, QTC_RINGS_SQUARE_LINE_WIDTH);
                 createPath(ci, halfWidth+0.5+(imgWidth-(QTC_RINGS_SQUARE_SMALL_SIZE+QTC_RINGS_SQUARE_LINE_WIDTH)),
                                halfWidth+0.5+(imgHeight-(QTC_RINGS_SQUARE_SMALL_SIZE+QTC_RINGS_SQUARE_LINE_WIDTH)),
                                QTC_RINGS_SQUARE_SMALL_SIZE, QTC_RINGS_SQUARE_SMALL_SIZE,
+                               QTC_RINGS_SQUARE_RADIUS, ROUNDED_ALL);
+                cairo_stroke(ci);
+
+                cairo_new_path(ci);
+                cairo_set_source_rgba(ci, 1.0, 1.0, 1.0, QTC_RINGS_SQUARE_LARGE_ALPHA);
+                cairo_set_line_width(ci, QTC_RINGS_SQUARE_LINE_WIDTH);
+                createPath(ci, halfWidth+0.5+((imgWidth-QTC_RINGS_SQUARE_LARGE_SIZE-QTC_RINGS_SQUARE_LINE_WIDTH)/2.0),
+                               halfWidth+0.5+((imgHeight-QTC_RINGS_SQUARE_LARGE_SIZE-QTC_RINGS_SQUARE_LINE_WIDTH)/2.0),
+                               QTC_RINGS_SQUARE_LARGE_SIZE, QTC_RINGS_SQUARE_LARGE_SIZE,
                                QTC_RINGS_SQUARE_RADIUS, ROUNDED_ALL);
                 cairo_stroke(ci);
 
@@ -2531,7 +2543,7 @@ static void drawProgress(cairo_t *cr, GtkStyle *style, GtkStateType state,
 
         if(opts.glowProgress && (horiz ? width : height)>3)
         {
-            cairo_pattern_t *pat=cairo_pattern_create_linear(x+1, y+1, horiz ? x+width-4 : 0, horiz ? 0 : y+height-4);
+            cairo_pattern_t *pat=cairo_pattern_create_linear(x+1, y+1, horiz ? x+width-4 : x+1, horiz ? y+1 : y+height-4);
             gboolean        inverted=FALSE;
             
             if(GLOW_MIDDLE!=opts.glowProgress && widget && GTK_IS_PROGRESS_BAR(widget))
