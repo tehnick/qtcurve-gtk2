@@ -2582,7 +2582,7 @@ static gboolean qtInit()
 
             /* Scrolled windows */
             if(opts.squareScrollViews)
-                thickness=opts.gtkScrollViews ? 1 : 2;
+                thickness=opts.gtkScrollViews || opts.thinSbarGroove || !opts.borderSbarGroove ? 1 : 2;
             else if(opts.etchEntry)
                 thickness=3;
 
@@ -2601,7 +2601,7 @@ static gboolean qtInit()
                                                     "{ xthickness = %d ythickness = %d } "
                                                       "widget_class \"*GtkProgressBar\" style \""QTC_RC_SETTING"Pbar\"";
                 int pthickness=opts.fillProgress
-                                ? doEffect
+                                ? doEffect && opts.borderProgress
                                     ? 1
                                     : 0
                                 : doEffect
@@ -2729,11 +2729,6 @@ static gboolean qtInit()
                 gtk_rc_parse_string(tmpStr);
             }
 
-            if(SLIDER_TRIANGULAR==opts.sliderStyle)
-                gtk_rc_parse_string("style \""QTC_RC_SETTING"Sldr\" {GtkScale::slider_length = 11 GtkScale::slider_width = 18} class \"*\" style \""QTC_RC_SETTING"Sldr\"");
-            else if(SLIDER_PLAIN_ROTATED==opts.sliderStyle || SLIDER_ROUND_ROTATED==opts.sliderStyle)
-                gtk_rc_parse_string("style \""QTC_RC_SETTING"Sldr\" {GtkScale::slider_length = 13 GtkScale::slider_width = 21} class \"*\" style \""QTC_RC_SETTING"Sldr\"");
-
             if(DEFAULT_SLIDER_WIDTH!=opts.sliderWidth)
             {
                 static const char *constStrFormat="style \""QTC_RC_SETTING"SbarW\" "
@@ -2744,20 +2739,32 @@ static gboolean qtInit()
                 tmpStr=(char *)realloc(tmpStr, strlen(constStrFormat)+16);
                 sprintf(tmpStr, constStrFormat, opts.sliderWidth, opts.sliderWidth, opts.sliderWidth+1);
                 gtk_rc_parse_string(tmpStr);
+            }
 
-                if(SLIDER_TRIANGULAR!=opts.sliderStyle)
-                {
-                    static const char *constStrFormat="style \""QTC_RC_SETTING"SldrW\" "
-                                    "{ GtkScale::slider_length = %d GtkScale::slider_width = %d } "
-                                    " class \"*\" style \""QTC_RC_SETTING"SldrW\" ";
+            {
+                gboolean customSliderW=DEFAULT_SLIDER_WIDTH!=opts.sliderWidth;
+                int      length=(SLIDER_CIRCULAR==opts.sliderStyle
+                                    ? QTC_CIRCULAR_SLIDER_SIZE
+                                    : SLIDER_TRIANGULAR==opts.sliderStyle
+                                        ? 11
+                                        : SLIDER_PLAIN_ROTATED==opts.sliderStyle || SLIDER_ROUND_ROTATED==opts.sliderStyle
+                                            ? (customSliderW ? QTC_SLIDER_SIZE +6 : 13)
+                                            : (customSliderW ? QTC_SLIDER_SIZE -2 : 21) ) + QTC_SLIDER_GLOW,
+                         width = (SLIDER_CIRCULAR==opts.sliderStyle
+                                    ? QTC_CIRCULAR_SLIDER_SIZE
+                                    : SLIDER_TRIANGULAR==opts.sliderStyle
+                                        ? 18
+                                        : SLIDER_PLAIN_ROTATED==opts.sliderStyle || SLIDER_ROUND_ROTATED==opts.sliderStyle
+                                            ? (customSliderW ? QTC_SLIDER_SIZE -2 : 21)
+                                            : (customSliderW ? QTC_SLIDER_SIZE +6 : 13) ) + QTC_SLIDER_GLOW;
 
-                    gboolean rotated=SLIDER_PLAIN_ROTATED==opts.sliderStyle || SLIDER_ROUND_ROTATED==opts.sliderStyle;
-                    //GtkRange::slider_length = 24 ???
-  
-                    tmpStr=(char *)realloc(tmpStr, strlen(constStrFormat)+16);
-                    sprintf(tmpStr, constStrFormat, QTC_SLIDER_SIZE+(rotated ? -2 : 6), QTC_SLIDER_SIZE+(rotated ? 6 : -2));
-                    gtk_rc_parse_string(tmpStr);
-                }
+                static const char *constStrFormat="style \""QTC_RC_SETTING"Sldr\" "
+                                                  "{GtkScale::slider_length = %d GtkScale::slider_width = %d} "
+                                                  "class \"*\" style \""QTC_RC_SETTING"Sldr\"";
+
+                tmpStr=(char *)realloc(tmpStr, strlen(constStrFormat)+8);
+                sprintf(tmpStr, constStrFormat, length, width);
+                gtk_rc_parse_string(tmpStr);
             }
 
             if(opts.lvLines)
@@ -2772,8 +2779,23 @@ static gboolean qtInit()
                                     "class \"*GtkWidget\" style \""QTC_RC_SETTING"Spl\"");
 
             if(IMG_PLAIN_RINGS==opts.bgndImage.type || IMG_BORDERED_RINGS==opts.bgndImage.type ||
-               IMG_PLAIN_RINGS==opts.menuBgndImage.type || IMG_BORDERED_RINGS==opts.menuBgndImage.type)
-                calcRingAlphas(&opts, &qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW]);
+               IMG_SQUARE_RINGS==opts.bgndImage.type ||
+               IMG_PLAIN_RINGS==opts.menuBgndImage.type || IMG_BORDERED_RINGS==opts.menuBgndImage.type ||
+               IMG_SQUARE_RINGS==opts.menuBgndImage.type)
+                calcRingAlphas(&qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW]);
+
+            if(isMozilla())
+                opts.crSize=QTC_CR_SMALL_SIZE;
+
+            if(opts.crSize!=QTC_CR_LARGE_SIZE)
+            {
+                static const char *constStrFormat="style \""QTC_RC_SETTING"CRSize\" "
+                                                  "{ GtkCheckButton::indicator_size = %d }"
+                                                  " class \"*\" style \""QTC_RC_SETTING"CRSize\" ";
+                tmpStr=(char *)realloc(tmpStr, strlen(constStrFormat)+16);
+                sprintf(tmpStr, constStrFormat, opts.crSize);
+                gtk_rc_parse_string(tmpStr);
+            }
 
             if(tmpStr)
                 free(tmpStr);
