@@ -115,9 +115,11 @@ enum QtColorRoles
 
     COLOR_FOCUS,    /* KDE4 */
     COLOR_HOVER,    /* KDE4 */
-    
-    COLOR_NONE,
-    COLOR_NUMCOLORS=COLOR_NONE  /* NONE does not count! */
+    COLOR_WINDOW_BORDER,
+    COLOR_WINDOW_BORDER_TEXT,
+
+    COLOR_NUMCOLORS,
+    COLOR_NUMCOLORS_STD = COLOR_NUMCOLORS-2 /* Remove Window border colors */
 };
 
 typedef enum
@@ -130,8 +132,7 @@ typedef enum
     GTK_APP_GIMP,
     GTK_APP_GIMP_PLUGIN,
     GTK_APP_JAVA,
-    GTK_APP_INKSCAPE,
-    /*GTK_APP_JAVA_SWT,*/
+    GTK_APP_JAVA_SWT,
     GTK_APP_EVOLUTION
     /*GTK_APP_GAIM*/
 } EGtkApp;
@@ -178,7 +179,8 @@ struct QtData
                     shadeSortedList;
     EGtkApp         app;
     gboolean        qt4,
-                    inactiveChangeSelectionColor;
+                    inactiveChangeSelectionColor,
+                    debug;
 #ifdef QTC_FIX_FIREFOX_LOCATION_BAR
     gboolean        isBrowser;
     int             fontSize;
@@ -273,11 +275,13 @@ enum
     SECT_KDE4_EFFECT_DISABLED =0x002000,
     SECT_KDE4_EFFECT_INACTIVE =0x004000,
 
+    SECT_KDE4_COL_WM          =0x008000,
+
     SECT_QT
 };
 
 #define ALL_KDE4_PAL_SETTINGS (SECT_KDE4_COL_BUTTON|SECT_KDE4_COL_SEL|SECT_KDE4_COL_TOOLTIP|SECT_KDE4_COL_VIEW| \
-                               SECT_KDE4_COL_WINDOW|SECT_KDE4_EFFECT_DISABLED|SECT_KDE4_EFFECT_INACTIVE)
+                               SECT_KDE4_COL_WINDOW|SECT_KDE4_EFFECT_DISABLED|SECT_KDE4_EFFECT_INACTIVE|SECT_KDE4_COL_WM)
 /*
   Qt uses the following predefined weights: 
     Light    = 25,
@@ -817,6 +821,10 @@ static void readKdeGlobals(const char *rc, int rd, bool kde4)
         qtSettings.colors[PAL_ACTIVE][COLOR_LV]=setGdkColor(248, 247, 246);
         qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW]=setGdkColor(233, 232, 232);
         qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW_TEXT]=setGdkColor(20, 19, 18);
+        qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW_BORDER]=qtSettings.colors[PAL_ACTIVE][COLOR_SELECTED];
+        qtSettings.colors[PAL_INACTIVE][COLOR_WINDOW_BORDER]=qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW];
+        qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW_BORDER_TEXT]=qtSettings.colors[PAL_ACTIVE][COLOR_TEXT_SELECTED];
+        qtSettings.colors[PAL_INACTIVE][COLOR_WINDOW_BORDER_TEXT]=qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW_TEXT];
 
         if(kde4)
         {
@@ -862,6 +870,8 @@ static void readKdeGlobals(const char *rc, int rd, bool kde4)
                     section=SECT_GENERAL;
                 else if(kde4 && 0==strncmp_i(line, "[KDE]", 5))
                     section=SECT_KDE;
+                else if(kde4 && 0==strncmp_i(line, "[WM]", 4))
+                    section=SECT_KDE4_COL_WM;
                 else
                 {
                     section=SECT_NONE;
@@ -939,6 +949,18 @@ static void readKdeGlobals(const char *rc, int rd, bool kde4)
             {
                 qtSettings.colors[PAL_ACTIVE][COLOR_LV]=readColor(line);
                 found|=RD_LIST_COLOR;
+            }
+            else if(kde4 && SECT_KDE4_COL_WM==section && rd&RD_KDE4_PAL && !(found&RD_KDE4_PAL))
+            {
+                colorsFound|=section;
+                if(0==strncmp_i(line, "activeBackground=", 17))
+                    qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW_BORDER]=readColor(line);
+                else if(0==strncmp_i(line, "activeForeground=", 17))
+                    qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW_BORDER_TEXT]=readColor(line);
+                else if(0==strncmp_i(line, "inactiveBackground=", 19))
+                    qtSettings.colors[PAL_INACTIVE][COLOR_WINDOW_BORDER]=readColor(line);
+                else if(0==strncmp_i(line, "inactiveForeground=", 19))
+                    qtSettings.colors[PAL_INACTIVE][COLOR_WINDOW_BORDER_TEXT]=readColor(line);
             }
             else if(kde4 && section>=SECT_KDE4_COL_BUTTON && section<=SECT_KDE4_COL_WINDOW &&
                     rd&RD_KDE4_PAL && !(found&RD_KDE4_PAL))
@@ -1097,11 +1119,11 @@ static void readKdeGlobals(const char *rc, int rd, bool kde4)
         for(eff=0; eff<2; ++eff)
         {
             int p=0==eff ? PAL_DISABLED : PAL_INACTIVE;
-            memcpy(qtSettings.colors[p], qtSettings.colors[PAL_ACTIVE], sizeof(GdkColor) * COLOR_NUMCOLORS);
+            memcpy(qtSettings.colors[p], qtSettings.colors[PAL_ACTIVE], sizeof(GdkColor) * COLOR_NUMCOLORS_STD);
             if(effects[eff].enabled)
             {
                 int col;
-                for(col=0; col<COLOR_NUMCOLORS; ++col)
+                for(col=0; col<COLOR_NUMCOLORS_STD; ++col)
                 {
                     switch(effects[eff].intensity.effect)
                     {
@@ -1550,6 +1572,9 @@ static char * getIconPath()
         path[plen - 1] = '\0';
     }
 
+    if(qtSettings.debug && path)
+        printf("%s\n", path);
+
     return path;
 }
 
@@ -1627,19 +1652,26 @@ static char * getAppName()
 #define USER_CHROME_CSS  USER_CHROME_DIR"/"USER_CHROME_FILE
 #define MAX_DEFAULT_NAME 16+strlen(CSS_DEFAULT)+strlen(USER_CHROME_CSS)
 
-#define QTC_GUARD_STR "Added by QtCurve -- do not remove"
-#define MENU_TEXT_STR "menubar > menu { color: HighlightText !important; } menubar > menu[_moz-menuactive=\"true\"] "\
+#define QTC_GUARD_STR      "Added by QtCurve -- do not remove"
+#define QTC_MENU_GUARD_STR "MenuColors, "QTC_GUARD_STR
+
+#define OLD_MENU_TEXT_STR "menubar > menu { color: HighlightText !important; } menubar > menu[_moz-menuactive=\"true\"] "\
                       "{ background-color : HighlightText !important; color: HighlightText !important; } "\
                       "/* "QTC_GUARD_STR" */\n"
-
+#define MENU_TEXT_STR_FORMAT "menubar > menu { color: #%02x%02x%02x !important; } " \
+                             "menubar > menu[_moz-menuactive=\"true\"][open=\"false\"] { color: #%02x%02x%02x !important; } "\
+                             "menubar > menu[_moz-menuactive=\"true\"][open=\"true\"] { color: #%02x%02x%02x !important; } "\
+                             "/* "QTC_MENU_GUARD_STR" */\n"
 #define CSS_FILE_STR     "@import url(\"file://"QTC_MOZILLA_DIR"/QtCurve.css\"); /* "QTC_GUARD_STR" */\n"
 #define BTN_CSS_FILE_STR "@import url(\"file://"QTC_MOZILLA_DIR"/QtCurve-KDEButtonOrder.css\"); /* "QTC_GUARD_STR" */\n"
 
 static void processUserChromeCss(char *file, gboolean add_btn_css, gboolean add_menu_colors)
 {
     FILE        *f=fopen(file, "r");
-    char        *contents=NULL;
-    gboolean    remove_menu_colors=FALSE;
+    char        *contents=NULL,
+                *menu_text_str=NULL;
+    gboolean    remove_menu_colors=FALSE,
+                remove_old_menu_colors=FALSE;
 #ifdef QTC_MODIFY_MOZILLA
     gboolean    remove_btn_css=FALSE,
                 add_css=TRUE;
@@ -1648,12 +1680,39 @@ static void processUserChromeCss(char *file, gboolean add_btn_css, gboolean add_
     size_t      file_size=0,
                 new_size=0;
 
+    if(add_menu_colors)
+    {
+        GdkColor *std, *active;
+        if(SHADE_WINDOW_BORDER==opts.shadeMenubars)
+            std=&qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW_BORDER_TEXT];
+        else if(opts.customMenuTextColor)
+            std=&opts.customMenuNormTextColor;
+        else if(SHADE_BLEND_SELECTED==opts.shadeMenubars || SHADE_SELECTED==opts.shadeMenubars || 
+                (SHADE_CUSTOM==opts.shadeMenubars && TOO_DARK(qtcPalette.menubar[ORIGINAL_SHADE])))
+            std=&qtSettings.colors[PAL_ACTIVE][COLOR_TEXT_SELECTED];
+        else
+            std=&qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW_TEXT];
+  
+        if(opts.customMenuTextColor)
+            active=&opts.customMenuSelTextColor;
+        else if(opts.useHighlightForMenu)
+            active=&qtSettings.colors[PAL_ACTIVE][COLOR_TEXT_SELECTED];
+        else
+            active=&qtSettings.colors[PAL_ACTIVE][COLOR_WINDOW_TEXT];
+
+        menu_text_str=(char *)malloc(strlen(MENU_TEXT_STR_FORMAT)+1);
+        sprintf(menu_text_str, MENU_TEXT_STR_FORMAT,
+                toQtColor(std->red), toQtColor(std->green), toQtColor(std->blue),
+                toQtColor(std->red), toQtColor(std->green), toQtColor(std->blue),
+                toQtColor(active->red), toQtColor(active->green), toQtColor(active->blue));
+    }
+
     if(f)
     {
         if(0==fstat(fileno(f), &st))
         {
             file_size = st.st_size;
-            new_size=file_size+strlen(MENU_TEXT_STR)+strlen(CSS_FILE_STR)+3;
+            new_size=file_size+strlen(MENU_TEXT_STR_FORMAT)+strlen(CSS_FILE_STR)+3;
             contents=(char *)malloc(new_size);
 
             if(contents)
@@ -1672,24 +1731,25 @@ static void processUserChromeCss(char *file, gboolean add_btn_css, gboolean add_
                         if (add_btn_css)
                             add_btn_css=FALSE;
                         else
-                        {
-                            remove_btn_css=TRUE;
-                            write_line=FALSE;
-                        }
+                            remove_btn_css=TRUE, write_line=FALSE;
                     }
                     else if(0==strcmp(line, CSS_FILE_STR))
                         add_css=FALSE;
                     else
 #endif
-                        if(0==strcmp(line, MENU_TEXT_STR))
+                    if(0==strcmp(line, OLD_MENU_TEXT_STR))
+                        write_line=FALSE, remove_old_menu_colors=TRUE;
+                    else if(NULL!=strstr(line, QTC_MENU_GUARD_STR))
                     {
                         if (add_menu_colors)
-                            add_menu_colors=FALSE;
-                        else
                         {
-                            remove_menu_colors=TRUE;
-                            write_line=FALSE;
+                            if(0==strcmp(menu_text_str, line))
+                                add_menu_colors=FALSE;
+                            else
+                                write_line=FALSE;
                         }
+                        else
+                            remove_menu_colors=TRUE, write_line=FALSE;
                     }
                     if(write_line)
                         strcat(contents, line);
@@ -1710,7 +1770,7 @@ static void processUserChromeCss(char *file, gboolean add_btn_css, gboolean add_
     {
         if(!contents)
         {
-            new_size=strlen(MENU_TEXT_STR)+strlen(BTN_CSS_FILE_STR)+strlen(CSS_FILE_STR)+4;
+            new_size=strlen(MENU_TEXT_STR_FORMAT)+strlen(BTN_CSS_FILE_STR)+strlen(CSS_FILE_STR)+4;
 
             contents=(char *)malloc(new_size);
             if(contents)
@@ -1753,15 +1813,15 @@ static void processUserChromeCss(char *file, gboolean add_btn_css, gboolean add_
 
                 if(len && contents[len-1]!='\n')
                     strcat(contents, "\n");
-                strcat(contents, MENU_TEXT_STR);
+                strcat(contents, menu_text_str);
             }
         }
     }
 
 #ifdef QTC_MODIFY_MOZILLA
-    if(contents && (add_btn_css || remove_btn_css || add_menu_colors || remove_menu_colors))
+    if(contents && (add_btn_css || remove_btn_css || add_menu_colors || remove_menu_colors || remove_old_menu_colors))
 #else
-    if(contents && (add_menu_colors || remove_menu_colors))
+    if(contents && (add_menu_colors || remove_menu_colors || remove_old_menu_colors))
 #endif
     {
         f=fopen(file, "w");
@@ -1773,6 +1833,9 @@ static void processUserChromeCss(char *file, gboolean add_btn_css, gboolean add_
         }
         free(contents);
     }
+    
+    if(menu_text_str)
+        free(menu_text_str);
 }
 
 static void processMozillaApp(gboolean add_btn_css, gboolean add_menu_colors, char *app, gboolean under_moz)
@@ -2026,6 +2089,7 @@ static gboolean qtInit()
 #endif
             qtSettings.inactiveChangeSelectionColor=FALSE;
             qtSettings.appName=NULL;
+            qtSettings.debug=getenv("QTCURVE_DEBUG");
             opts.contrast=QTC_DEFAULT_CONTRAST;
 
             lastRead=now;
@@ -2125,6 +2189,8 @@ static gboolean qtInit()
                                         ? &opts.customMenubarsColor
                                         : &qtSettings.colors[PAL_ACTIVE][COLOR_SELECTED];
                     gboolean add_menu_colors=SHADE_BLEND_SELECTED==opts.shadeMenubars || SHADE_SELECTED==opts.shadeMenubars ||
+                                             SHADE_WINDOW_BORDER==opts.shadeMenubars ||
+                                             opts.customMenuTextColor || !opts.useHighlightForMenu ||
                                              (SHADE_CUSTOM==opts.shadeMenubars && TOO_DARK(*menu_col) ),
                              add_btn_css=
 #ifdef QTC_MODIFY_MOZILLA
@@ -2133,9 +2199,6 @@ static gboolean qtInit()
                                               FALSE;
 #endif
 
-#ifndef QTC_MODIFY_MOZILLA
-                    if(add_menu_colors)
-#endif
                     if(firefox)
                     {
                         processMozillaApp(mozVersion<QTC_MAKE_VERSION(3, 5) && !opts.gtkButtonOrder, add_menu_colors, "firefox", TRUE);
@@ -2171,19 +2234,20 @@ static gboolean qtInit()
                     qtSettings.app=GTK_APP_JAVA;
                 else if(0==strcmp(qtSettings.appName, "evolution"))
                     qtSettings.app=GTK_APP_EVOLUTION;
-                else if(0==strcmp(qtSettings.appName, "inkscape"))
-                    qtSettings.app=GTK_APP_INKSCAPE;
-                /*else if(0==strcmp(qtSettings.appName, "eclipse"))
-                    qtSettings.app=GTK_APP_JAVA_SWT;*/
+                else if(0==strcmp(qtSettings.appName, "eclipse"))
+                    qtSettings.app=GTK_APP_JAVA_SWT;
                 /*else if(app==strstr(qtSettings.appName, "gaim"))
                     qtSettings.app=GTK_APP_GAIM;*/
             }
 
-            /* Eclipse sets a application name, so if this is set then we're not a Swing java app */
-            /*if(GTK_APP_JAVA==qtSettings.app && g_get_application_name() && 0!=strcmp(g_get_application_name(), "<unknown>"))
-                qtSettings.app=GTK_APP_JAVA_SWT;*/
+            if(qtSettings.debug)
+                printf("Name: \"%s\"\n", qtSettings.appName ? qtSettings.appName : "<unknown>");
 
-            if(GTK_APP_JAVA==qtSettings.app || isMozilla() || GTK_APP_OPEN_OFFICE==qtSettings.app)
+            /* Eclipse sets a application name, so if this is set then we're not a Swing java app */
+            if(GTK_APP_JAVA==qtSettings.app && g_get_application_name() && 0!=strcmp(g_get_application_name(), "<unknown>"))
+                qtSettings.app=GTK_APP_JAVA_SWT;
+
+            if(GTK_APP_JAVA==qtSettings.app || GTK_APP_JAVA_SWT==qtSettings.app || isMozilla() || GTK_APP_OPEN_OFFICE==qtSettings.app)
                 opts.bgndAppearance=APPEARANCE_FLAT, opts.bgndImage.type=IMG_NONE;
 
             if(!IS_FLAT(opts.bgndAppearance) && excludedApp(opts.noBgndGradientApps))
@@ -2265,6 +2329,7 @@ static gboolean qtInit()
             {
                 opts.shadeMenubars=SHADE_NONE;
                 opts.menubarHiding=false;
+                opts.statusbarHiding=false;
             }
 
             /* Tear off menu items dont seem to draw they're background, and the default background
@@ -2797,6 +2862,10 @@ static gboolean qtInit()
                 gtk_rc_parse_string(tmpStr);
             }
 
+            if(TB_NONE==opts.toolbarBorders)
+                gtk_rc_parse_string("style \""QTC_RC_SETTING"TbB\" { xthickness = 0 ythickness = 0 GtkToolbar::internal-padding = 0 }"
+                                    " widget_class \"*<GtkToolbar>\" style  \""QTC_RC_SETTING"TbB\"");
+            
             if(tmpStr)
                 free(tmpStr);
         }

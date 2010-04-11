@@ -63,12 +63,21 @@ style "qtcurve-toolbar" = "qtcurve-default"
   GtkButton::child_displacement_y   = 1
   GtkOptionMenu::focus-padding = 0
   GtkWidget::focus-padding = 1
+  xthickness = 1
+  ythickness = 1
+  GtkToolbar::internal-padding = 1
 }
 
 style "qtcurve-toolbarbutton" = "qtcurve-toolbar"
 {
   xthickness = 2
   ythickness = 2
+}
+
+style "qtcurve-swt-toolbarbutton" = "qtcurve-toolbar"
+{
+  xthickness = 1
+  ythickness = 1
 }
 
 style "qtcurve-sptoolbar" = "qtcurve-default"
@@ -239,8 +248,9 @@ widget_class "*Tree*GtkButton" style "qtcurve-header"
 widget_class "*List*GtkButton" style "qtcurve-header"
 widget_class "*GimpThumbBox*GtkEventBox*GtkVBox*GtkButton" style "qtcurve-header"
 widget_class "BasePWidget.GtkEventBox.GtkTable.GtkFrame" style "qtcurve-w2"
-widget_class "*Toolbar*" style "qtcurve-toolbar"
+widget_class "*<GtkToolbar>"  style "qtcurve-toolbar"
 widget_class "*Toolbar*Button" style "qtcurve-toolbarbutton"
+widget_class "*.SwtFixed.*Toolbar*Button" style "qtcurve-swt-toolbarbutton"
 widget_class "*HandleBox*HBox*SPDesktopWidget" style "qtcurve-sptoolbar"
 widget_class "*HandleBox*SPButton" style "qtcurve-sptoolbarbutton"
 widget_class "*.GtkCombo.GtkEntry" style "qtcurve-combo"
