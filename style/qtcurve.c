@@ -57,7 +57,9 @@ static struct
 static Options opts;
 
 #include "qt_settings.c"
-#include "atoms.c"
+#include <X11/Xlib.h>
+#include <X11/Xatom.h>
+#include <gdk/gdkx.h>
 #include "animation.c"
 #include "menu.c"
 #include "tab.c"
@@ -809,11 +811,13 @@ static int getRound(const char *detail, GtkWidget *widget, int x, int y, int wid
         if(0==strcmp(detail, "slider"))
             return
 #ifndef SIMPLE_SCROLLBARS
-                    SCROLLBAR_NONE==opts.scrollbarType || opts.flatSbarButtons ? ROUNDED_ALL :
+                    !(opts.square&SQUARE_SB_SLIDER) && (SCROLLBAR_NONE==opts.scrollbarType || opts.flatSbarButtons) ? ROUNDED_ALL :
 #endif
                     ROUNDED_NONE;
-        else if(0==strcmp(detail, "qtc-slider") ||
-                0==strcmp(detail, "splitter") || 0==strcmp(detail, "optionmenu")  ||
+        else if(0==strcmp(detail, "qtc-slider"))
+            return opts.square&SQUARE_SLIDER && (SLIDER_PLAIN==opts.sliderStyle || SLIDER_PLAIN_ROTATED==opts.sliderStyle)
+                ? ROUNDED_NONE : ROUNDED_ALL;
+        else if(0==strcmp(detail, "splitter") || 0==strcmp(detail, "optionmenu")  ||
                 0==strcmp(detail, "togglebutton") || 0==strcmp(detail, "hscale") ||
                 0==strcmp(detail, "vscale") || 0==strcmp(detail, QTC_CHECKBOX)
                 /* || 0==strcmp(detail, "paned") || 0==strcmp(detail, QTC_PANED)*/ )
@@ -4240,7 +4244,7 @@ debugDisplayWidget(widget, 3);
                 wid=WIDGET_FILLED_SLIDER_TROUGH;
             }
             drawLightBevel(cr, style, state, area, NULL, x, y, width, height,
-                           bgndcol, bgndcols, ROUNDED_ALL, wid,
+                           bgndcol, bgndcols, opts.square&SQUARE_SLIDER ? ROUNDED_NONE : ROUNDED_ALL, wid,
                            BORDER_FLAT, DF_DO_CORNERS|DF_SUNKEN|DF_DO_BORDER|
                            (horiz ? 0 : DF_VERT), widget);
 
@@ -4267,7 +4271,7 @@ debugDisplayWidget(widget, 3);
                 {
                     drawLightBevel(cr, style, state, area, NULL, used_x, used_y, used_w, used_h,
                                    &usedcols[ORIGINAL_SHADE], usedcols,
-                                   ROUNDED_ALL, WIDGET_FILLED_SLIDER_TROUGH,
+                                   opts.square&SQUARE_SLIDER ? ROUNDED_NONE : ROUNDED_ALL, WIDGET_FILLED_SLIDER_TROUGH,
                                    BORDER_FLAT, DF_DO_CORNERS|DF_SUNKEN|DF_DO_BORDER|
                                    (horiz ? 0 : DF_VERT), widget);
                 }
@@ -4379,6 +4383,9 @@ debugDisplayWidget(widget, 3);
                         break;
     #endif
                 }
+
+            if(opts.square&SQUARE_SB_SLIDER)
+                sbarRound=ROUNDED_NONE;
 
             if(drawBg)
                 if(opts.gtkScrollViews && IS_FLAT(opts.sbarBgndAppearance) && 0!=opts.tabBgnd && widget && widget->parent && widget->parent->parent &&
@@ -5177,7 +5184,8 @@ printf("Draw check %d %d %d %d %d %d %d %s  ", state, shadow_type, x, y, width, 
 debugDisplayWidget(widget, 3);
 #endif
 
-    if(mnu && GTK_STATE_PRELIGHT==state)
+    if((mnu && GTK_STATE_PRELIGHT==state) ||
+       (list && GTK_STATE_ACTIVE==state))
         state=GTK_STATE_NORMAL;
 
     if(mnu && isMozilla())
@@ -5297,7 +5305,8 @@ static void gtkDrawOption(GtkStyle *style, GdkWindow *window, GtkStateType state
 
     CAIRO_BEGIN
 
-    if(mnu && GTK_STATE_PRELIGHT==state)
+    if((mnu && GTK_STATE_PRELIGHT==state) ||
+       (list && GTK_STATE_ACTIVE==state))
         state=GTK_STATE_NORMAL;
 
     if(!qtSettings.qt4 && mnu)
@@ -7471,10 +7480,7 @@ static void qtcurve_rc_style_init(QtCurveRcStyle *qtcurve_rc)
 {
     lastSlider.widget=NULL;
     if(qtInit())
-    {
         generateColors();
-        qtcCreateAtoms();
-    }
 #ifdef QTC_ADD_EVENT_FILTER____DISABLED
     qtcAddEventFilter();
 #endif
