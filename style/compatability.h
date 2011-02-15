@@ -78,7 +78,6 @@
     #define qtcWidgetGetState(W)            gtk_widget_get_state(W)
     #define qtcWidgetSetState(W, S)         gtk_widget_set_state(W, S)
     #define qtcWidgetHasFocus(W)            gtk_widget_has_focus(W)
-    #define qtcWidgetState(W)               gtk_widget_get_state(W)
     #define qtcWidgetVisible(W)             gtk_widget_get_visible(W)
     #define qtcWidgetHasDefault(W)          gtk_widget_has_default(W)
     #define qtcWidgetIsSensitive(W)         gtk_widget_is_sensitive(W)
@@ -141,7 +140,6 @@
     #define qtcWidgetGetState(W)            ((W)->state)
     #define qtcWidgetSetState(W, S)         ((W)->state=(S))
     #define qtcWidgetHasFocus(W)            GTK_WIDGET_HAS_FOCUS(W)
-    #define qtcWidgetState(W)               GTK_WIDGET_STATE(W)
     #define qtcWidgetVisible(W)             GTK_WIDGET_VISIBLE(W)
     #define qtcWidgetHasDefault(W)          GTK_WIDGET_HAS_DEFAULT(W)
     #define qtcWidgetIsSensitive(W)         GTK_WIDGET_IS_SENSITIVE(W)
@@ -185,13 +183,6 @@
     #define QTC_KEY_M                       GDK_M
     #define QTC_KEY_s                       GDK_s
     #define QTC_KEY_S                       GDK_S
-
-    #define WINDOW_PARAM     GdkWindow *window,
-    #define WINDOW_PARAM_VAL window,
-    #define GDKWINDOW        window
-    #define AREA_PARAM       GdkRectangle *area,
-    #define AREA_PARAM_VAL   area,
-    #define AREA_PARAM_VAL_L area
 
 #endif
 
