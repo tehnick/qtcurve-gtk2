@@ -199,7 +199,7 @@ void drawBevelGradientAlpha(cairo_t *cr, GdkRectangle *area, int x, int y, int w
                 pos=0.999;
 #endif
             cairo_pattern_add_color_stop_rgba(pt, pos,
-                                              CAIRO_COL(col), alpha*grad->stops[i].alpha);
+                                              CAIRO_COL(col), WIDGET_TOOLTIP==w || WIDGET_LISTVIEW_HEADER==w ? alpha : alpha*grad->stops[i].alpha);
         }
 
         if(APPEARANCE_AGUA==app && !(topTab || botTab) && (horiz ? height : width)>AGUA_MAX)
@@ -1561,7 +1561,7 @@ void drawEntryField(cairo_t *cr, GtkStyle *style, GtkStateType state, GdkWindow 
         gtk_entry_set_invisible_char(GTK_ENTRY(widget), opts.passwordChar);
 }
 
-void setProgressStripeClipping(cairo_t *cr, AREA_PARAM int x, int y, int width, int height, int animShift, gboolean horiz)
+void setProgressStripeClipping(cairo_t *cr, GdkRectangle *area, int x, int y, int width, int height, int animShift, gboolean horiz)
 {
     int stripeOffset;
 
@@ -1703,7 +1703,7 @@ void drawProgress(cairo_t *cr, GtkStyle *style, GtkStateType state, GtkWidget *w
             }
             else
             {
-                setProgressStripeClipping(cr, AREA_PARAM_VAL xo, yo, wo, ho, animShift, horiz);
+                setProgressStripeClipping(cr, area, xo, yo, wo, ho, animShift, horiz);
                 drawLightBevel(cr, style, new_state, NULL, x, y, width, height, &itemCols[1],
                                qtcPalette.highlight, ROUNDED_ALL, wid, BORDER_FLAT,
                                (opts.fillProgress || !opts.borderProgress ? 0 : DF_DO_BORDER)|(horiz ? 0 : DF_VERT), widget);
@@ -2375,7 +2375,7 @@ void createRoundedMask(cairo_t *cr, GtkWidget *widget, gint x, gint y, gint widt
             cairo_set_source_rgba(crMask, 0, 0, 0, 1);
             cairo_fill(crMask);
             if(isToolTip)
-                gtk_widget_shape_combine_mask(widget, mask, 0, 0);
+                gtk_widget_shape_combine_mask(widget, mask, x, y);
             else
                 gdk_window_shape_combine_mask(gtk_widget_get_parent_window(widget), mask, 0, 0);
             cairo_destroy(crMask);
@@ -2497,7 +2497,7 @@ void drawTreeViewLines(cairo_t *cr, GdkColor *col, int x, int y, int h, int dept
     }
 }
 
-void drawPolygon(WINDOW_PARAM GtkStyle *style, GdkColor *col, GdkRectangle *area, GdkPoint *points, int npoints, gboolean fill)
+void drawPolygon(GdkWindow *window, GtkStyle *style, GdkColor *col, GdkRectangle *area, GdkPoint *points, int npoints, gboolean fill)
 {
 #if (defined QTC_USE_CAIRO_FOR_ARROWS) || GTK_CHECK_VERSION(2, 90, 0)
     CAIRO_BEGIN
@@ -2540,7 +2540,7 @@ void drawPolygon(WINDOW_PARAM GtkStyle *style, GdkColor *col, GdkRectangle *area
 #endif
 }
 
-void drawArrow(WINDOW_PARAM GtkStyle *style, GdkColor *col, GdkRectangle *area, GtkArrowType arrow_type,
+void drawArrow(GdkWindow *window, GtkStyle *style, GdkColor *col, GdkRectangle *area, GtkArrowType arrow_type,
                gint x, gint y, gboolean small, gboolean fill)
 {
     if(small)
@@ -2549,25 +2549,25 @@ void drawArrow(WINDOW_PARAM GtkStyle *style, GdkColor *col, GdkRectangle *area, 
             case GTK_ARROW_UP:
             {
                 GdkPoint a[]={{x+2,y},  {x,y-2},  {x-2,y},   {x-2,y+1}, {x,y-1}, {x+2,y+1}};
-                drawPolygon(WINDOW_PARAM_VAL style, col, area, a, opts.vArrows ? 6 : 3, fill);
+                drawPolygon(window, style, col, area, a, opts.vArrows ? 6 : 3, fill);
                 break;
             }
             case GTK_ARROW_DOWN:
             {
                 GdkPoint a[]={{x+2,y},  {x,y+2},  {x-2,y},   {x-2,y-1}, {x,y+1}, {x+2,y-1}};
-                drawPolygon(WINDOW_PARAM_VAL style, col, area, a, opts.vArrows ? 6 : 3, fill);
+                drawPolygon(window, style, col, area, a, opts.vArrows ? 6 : 3, fill);
                 break;
             }
             case GTK_ARROW_RIGHT:
             {
                 GdkPoint a[]={{x,y-2},  {x+2,y},  {x,y+2},   {x-1,y+2}, {x+1,y}, {x-1,y-2}};
-                drawPolygon(WINDOW_PARAM_VAL style, col, area, a, opts.vArrows ? 6 : 3, fill);
+                drawPolygon(window, style, col, area, a, opts.vArrows ? 6 : 3, fill);
                 break;
             }
             case GTK_ARROW_LEFT:
             {
                 GdkPoint a[]={{x,y-2},  {x-2,y},  {x,y+2},   {x+1,y+2}, {x-1,y}, {x+1,y-2}};
-                drawPolygon(WINDOW_PARAM_VAL style, col, area, a, opts.vArrows ? 6 : 3, fill);
+                drawPolygon(window, style, col, area, a, opts.vArrows ? 6 : 3, fill);
                 break;
             }
             default:
@@ -2579,25 +2579,25 @@ void drawArrow(WINDOW_PARAM GtkStyle *style, GdkColor *col, GdkRectangle *area, 
             case GTK_ARROW_UP:
             {
                 GdkPoint a[]={{x+3,y+1},  {x,y-2},  {x-3,y+1},    {x-3, y+2},  {x-2, y+2}, {x,y},  {x+2, y+2}, {x+3,y+2}};
-                drawPolygon(WINDOW_PARAM_VAL style, col, area, a, opts.vArrows ? 8 : 3, fill);
+                drawPolygon(window, style, col, area, a, opts.vArrows ? 8 : 3, fill);
                 break;
             }
             case GTK_ARROW_DOWN:
             {
                 GdkPoint a[]={{x+3,y-1},  {x,y+2},  {x-3,y-1},   {x-3,y-2},  {x-2, y-2}, {x,y}, {x+2, y-2}, {x+3,y-2}};
-                drawPolygon(WINDOW_PARAM_VAL style, col, area, a, opts.vArrows ? 8 : 3, fill);
+                drawPolygon(window, style, col, area, a, opts.vArrows ? 8 : 3, fill);
                 break;
             }
             case GTK_ARROW_RIGHT:
             {
                 GdkPoint a[]={{x-1,y+3},  {x+2,y},  {x-1,y-3},   {x-2,y-3}, {x-2, y-2},  {x,y}, {x-2, y+2},  {x-2,y+3}};
-                drawPolygon(WINDOW_PARAM_VAL style, col, area, a, opts.vArrows ? 8 : 3, fill);
+                drawPolygon(window, style, col, area, a, opts.vArrows ? 8 : 3, fill);
                 break;
             }
             case GTK_ARROW_LEFT:
             {
                 GdkPoint a[]={{x+1,y-3},  {x-2,y},  {x+1,y+3},   {x+2,y+3}, {x+2, y+2},  {x,y}, {x+2, y-2},  {x+2,y-3}};
-                drawPolygon(WINDOW_PARAM_VAL style, col, area, a, opts.vArrows ? 8 : 3, fill);
+                drawPolygon(window, style, col, area, a, opts.vArrows ? 8 : 3, fill);
                 break;
             }
             default:
@@ -2666,7 +2666,7 @@ static void ge_cairo_transform_for_layout(cairo_t *cr, PangoLayout *layout, int 
         cairo_translate(cr, x, y);
 }
 
-void qtcDrawLayout(GtkStyle *style, WINDOW_PARAM GtkStateType state, gboolean use_text, AREA_PARAM gint x, gint y, PangoLayout *layout)
+void drawLayout(GtkStyle *style, GdkWindow *window, GtkStateType state, gboolean use_text, GdkRectangle *area, gint x, gint y, PangoLayout *layout)
 {
     CAIRO_BEGIN
     gdk_cairo_set_source_color(cr, use_text || GTK_STATE_INSENSITIVE==state ? &style->text[state] : &style->fg[state]);
@@ -2765,7 +2765,7 @@ void drawToolTip(cairo_t *cr, GtkWidget *widget, GdkRectangle *area, int x, int 
     if(useAlpha)
         cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
 
-    drawBevelGradientAlpha(cr, area, x, y, width, height, col, true, FALSE, opts.tooltipAppearance, WIDGET_OTHER, useAlpha ? 0.875 : 1.0);
+    drawBevelGradientAlpha(cr, area, x, y, width, height, col, true, FALSE, opts.tooltipAppearance, WIDGET_TOOLTIP, useAlpha ? 0.875 : 1.0);
 #if GTK_CHECK_VERSION(2,9,0)
     if(!rounded)
 #endif
@@ -2900,14 +2900,14 @@ void drawMenuItem(cairo_t *cr, GtkStateType state, GtkStyle *style, GtkWidget *w
         GdkColor *bgnd=qtcPalette.menubar && mb && !isMozilla() && GTK_APP_JAVA!=qtSettings.app
                         ? &qtcPalette.menubar[ORIGINAL_SHADE] : NULL;
         int      round=mb
-                            ? active_mb && opts.roundMbTopOnly
-                                ? ROUNDED_TOP
-                                : ROUNDED_ALL
-                            : ROUNDED_ALL,
-                    new_state=GTK_STATE_PRELIGHT==state ? GTK_STATE_NORMAL : state;
+                        ? active_mb && opts.roundMbTopOnly
+                            ? ROUNDED_TOP
+                            : ROUNDED_ALL
+                        : ROUNDED_ALL,
+                 new_state=GTK_STATE_PRELIGHT==state ? GTK_STATE_NORMAL : state;
         gboolean stdColors=!mb || (SHADE_BLEND_SELECTED!=opts.shadeMenubars && SHADE_SELECTED!=opts.shadeMenubars);
         int      fillVal=grayItem ? 4 : ORIGINAL_SHADE,
-                    borderVal=opts.borderMenuitems ? 0 : fillVal;
+                 borderVal=opts.borderMenuitems ? 0 : fillVal;
 
         if(grayItem && mb && !active_mb && !opts.colorMenubarMouseOver &&
             (opts.borderMenuitems || !IS_FLAT(opts.menuitemAppearance)))
@@ -2916,6 +2916,9 @@ void drawMenuItem(cairo_t *cr, GtkStateType state, GtkStyle *style, GtkWidget *w
         if(mb && !opts.roundMbTopOnly && !(opts.square&SQUARE_POPUP_MENUS))
             x++, y++, width-=2, height-=2;
 
+        if(grayItem && !mb && (USE_LIGHTER_POPUP_MENU || opts.shadePopupMenu))
+            itemCols=qtcPalette.menu;
+                        
         if(!mb && APPEARANCE_FADE==opts.menuitemAppearance)
         {
             gboolean        reverse=FALSE; /* TODO !!! */
@@ -3075,9 +3078,6 @@ void drawMenu(cairo_t *cr, GtkStateType state, GtkStyle *style, GtkWidget *widge
 
     if(opts.popupBorder)
     {
-        GdkColor        *cols=USE_LIGHTER_POPUP_MENU || opts.shadePopupMenu
-                            ? qtcPalette.menu
-                            : qtcPalette.background;
         EGradientBorder border=qtcGetGradient(opts.menuBgndAppearance, &opts)->border;
 
         if(roundedMenu && !comboMenu)
@@ -3087,7 +3087,7 @@ void drawMenu(cairo_t *cr, GtkStateType state, GtkStyle *style, GtkWidget *widge
             cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
 
         cairo_new_path(cr);
-        cairo_set_source_rgb(cr, CAIRO_COL(cols[STD_BORDER]));
+        cairo_set_source_rgb(cr, CAIRO_COL(qtcPalette.menu[STD_BORDER]));
             /*For now dont round combos - getting weird effects with shadow/clipping :-( */
         if(roundedMenu && !comboMenu)
             createPath(cr, x+0.5, y+0.5, width-1, height-1, radius-1, ROUNDED_ALL);
@@ -3101,12 +3101,12 @@ void drawMenu(cairo_t *cr, GtkStateType state, GtkStyle *style, GtkWidget *widge
                 if(GB_3D!=border)
                 {
                     cairo_new_path(cr);
-                    cairo_set_source_rgb(cr, CAIRO_COL(cols[0]));
+                    cairo_set_source_rgb(cr, CAIRO_COL(qtcPalette.menu[0]));
                     createTLPath(cr, x+1.5, y+1.5, width-3, height-3, radius-2, ROUNDED_ALL);
                     cairo_stroke(cr);
                 }
                 cairo_new_path(cr);
-                cairo_set_source_rgb(cr, CAIRO_COL(cols[GB_LIGHT==border ? 0 : FRAME_DARK_SHADOW]));
+                cairo_set_source_rgb(cr, CAIRO_COL(qtcPalette.menu[GB_LIGHT==border ? 0 : FRAME_DARK_SHADOW]));
                 createBRPath(cr, x+1.5, y+1.5, width-3, height-3, radius-2, ROUNDED_ALL);
                 cairo_stroke(cr);
             }
@@ -3114,11 +3114,11 @@ void drawMenu(cairo_t *cr, GtkStateType state, GtkStyle *style, GtkWidget *widge
             {
                 if(GB_3D!=border)
                 {
-                    drawHLine(cr, CAIRO_COL(cols[0]), 1.0, x+1, y+1, width-2);
-                    drawVLine(cr, CAIRO_COL(cols[0]), 1.0, x+1, y+1, height-2);
+                    drawHLine(cr, CAIRO_COL(qtcPalette.menu[0]), 1.0, x+1, y+1, width-2);
+                    drawVLine(cr, CAIRO_COL(qtcPalette.menu[0]), 1.0, x+1, y+1, height-2);
                 }
-                drawHLine(cr, CAIRO_COL(cols[GB_LIGHT==border ? 0 : FRAME_DARK_SHADOW]), 1.0, x+1, y+height-2, width-2);
-                drawVLine(cr, CAIRO_COL(cols[GB_LIGHT==border ? 0 : FRAME_DARK_SHADOW]), 1.0, x+width-2, y+1, height-2);
+                drawHLine(cr, CAIRO_COL(qtcPalette.menu[GB_LIGHT==border ? 0 : FRAME_DARK_SHADOW]), 1.0, x+1, y+height-2, width-2);
+                drawVLine(cr, CAIRO_COL(qtcPalette.menu[GB_LIGHT==border ? 0 : FRAME_DARK_SHADOW]), 1.0, x+width-2, y+1, height-2);
             }
         }
     }
