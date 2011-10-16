@@ -39,6 +39,29 @@ static GtkWidget *qtcWMMoveDragWidget=NULL;
 /*! this spares some time (by not processing the same event twice), and prevents some bugs */
  GdkEventButton *qtcWMMoveLastRejectedEvent=NULL;
 
+static int       qtcWMMoveBtnReleaseSignalId=0;
+static int       qtcWMMoveBtnReleaseHookId=0;
+
+static gboolean qtcWMMoveDragEnd();
+
+static gboolean qtcWMMoveBtnReleaseHook(GSignalInvocationHint *a, guint b, const GValue *c, gpointer d)
+{
+    if(qtcWMMoveDragWidget)
+        qtcWMMoveDragEnd();
+    return TRUE;
+}
+
+static qtcWMMoveRegisterBtnReleaseHook()
+{
+    if(0==qtcWMMoveBtnReleaseSignalId && 0==qtcWMMoveBtnReleaseHookId)
+    {
+        qtcWMMoveBtnReleaseSignalId = g_signal_lookup("button-release-event", GTK_TYPE_WIDGET);
+        if(qtcWMMoveBtnReleaseSignalId)
+            qtcWMMoveBtnReleaseHookId = g_signal_add_emission_hook(qtcWMMoveBtnReleaseSignalId,
+                                                                   (GQuark)0L, qtcWMMoveBtnReleaseHook, 0L, 0L);
+    }
+}
+
 static void qtcWMMoveStopTimer()
 {
     if(qtcWMMoveTimer)
@@ -62,7 +85,12 @@ static void qtcWMMoveStore(GtkWidget *widget, GdkEventButton *event)
     qtcWMMoveDragWidget=widget;
 }
 
-static gboolean qtcWMMoveButtonRelease(GtkWidget *widget, GdkEventButton *event, gpointer user_data);
+#if !GTK_CHECK_VERSION(2, 12, 0)
+GdkWindow *gtk_widget_get_window(GtkWidget *widget)
+{
+    return widget->window;
+}
+#endif
 
 static void qtcWMMoveTrigger(GtkWidget *w, int x, int y)
 {
@@ -86,7 +114,7 @@ static void qtcWMMoveTrigger(GtkWidget *w, int x, int y)
 
     XSendEvent(GDK_DISPLAY_XDISPLAY(display), GDK_WINDOW_XID(root), False, SubstructureRedirectMask | SubstructureNotifyMask, &xev);
     /* force a release as some widgets miss it... */
-    qtcWMMoveButtonRelease(w, NULL, NULL);
+    qtcWMMoveDragEnd(w);
 }
 
 static gboolean qtcWMMoveWithinWidget(GtkWidget *widget, GdkEventButton *event)
@@ -182,7 +210,7 @@ static gboolean qtcWMMoveChildrenUseEvent(GtkWidget *widget, GdkEventButton *eve
             if(
                 (qtcWMMoveIsBlackListed(G_OBJECT(childWidget))) ||
                 (GTK_IS_NOTEBOOK(widget) && qtcTabIsLabel(GTK_NOTEBOOK(widget), childWidget)) ||
-                (GTK_IS_BUTTON(childWidget) && gtk_widget_get_state(childWidget) != GTK_STATE_INSENSITIVE) ||
+                (GTK_IS_BUTTON(childWidget) && qtcWidgetGetState(childWidget) != GTK_STATE_INSENSITIVE) ||
                 (gtk_widget_get_events(childWidget) & (GDK_BUTTON_PRESS_MASK|GDK_BUTTON_RELEASE_MASK)) ||
                 (GTK_IS_MENU_ITEM(childWidget)) ||
                 (GTK_IS_SCROLLED_WINDOW(childWidget) && (!inNoteBook || gtk_widget_is_focus(childWidget))))
@@ -220,7 +248,11 @@ static gboolean qtcWMMoveUseEvent(GtkWidget *widget, GdkEventButton *event)
 static gboolean qtcWWMoveStartDelayedDrag(gpointer data)
 {
     if(qtcWMMoveDragWidget)
+    {
+        gdk_threads_enter();
         qtcWMMoveTrigger(qtcWMMoveDragWidget, qtcWMMoveLastX, qtcWMMoveLastY);
+        gdk_threads_leave();
+    }
 }
 
 static gboolean qtcWMMoveIsWindowDragWidget(GtkWidget *widget, GdkEventButton *event)
@@ -248,22 +280,17 @@ static gboolean qtcWMMoveButtonPress(GtkWidget *widget, GdkEventButton *event, g
     return FALSE;
 }
 
-static gboolean qtcWMMoveDragEnd(GtkWidget *widget)
+static gboolean qtcWMMoveDragEnd()
 {
-    if (widget==qtcWMMoveDragWidget)
+    if (qtcWMMoveDragWidget)
     {
-        gtk_grab_remove(widget);
+        //gtk_grab_remove(widget);
         gdk_pointer_ungrab(CurrentTime);
         qtcWMMoveReset();
         return TRUE;
     }
 
     return FALSE;
-}
-
-static gboolean qtcWMMoveButtonRelease(GtkWidget *widget, GdkEventButton *event, gpointer user_data)
-{
-    return qtcWMMoveDragEnd(widget);
 }
 
 static void qtcWMMoveCleanup(GtkWidget *widget)
@@ -282,8 +309,6 @@ static void qtcWMMoveCleanup(GtkWidget *widget)
                                     (gint)g_object_steal_data(G_OBJECT(widget), "QTC_WM_MOVE_STYLE_SET_ID"));
         g_signal_handler_disconnect(G_OBJECT(widget),
                                     (gint)g_object_steal_data(G_OBJECT(widget), "QTC_WM_MOVE_BUTTON_PRESS_ID"));
-        g_signal_handler_disconnect(G_OBJECT(widget),
-                                    (gint)g_object_steal_data(G_OBJECT(widget), "QTC_WM_MOVE_BUTTON_RELEASE_ID"));
         g_object_steal_data(G_OBJECT(widget), "QTC_WM_MOVE_HACK_SET");
     }
 }
@@ -321,7 +346,7 @@ static gboolean qtcWMMoveMotion(GtkWidget *widget, GdkEventMotion *event, gpoint
 
 static gboolean qtcWMMoveLeave(GtkWidget *widget, GdkEventMotion *event, gpointer user_data)
 {
-    return qtcWMMoveDragEnd(widget);
+    return qtcWMMoveDragEnd();
 }
 
 void qtcWMMoveSetup(GtkWidget *widget)
@@ -340,9 +365,20 @@ void qtcWMMoveSetup(GtkWidget *widget)
     if(GTK_IS_NOTEBOOK(parent) && qtcTabIsLabel(GTK_NOTEBOOK(parent), widget))
         return;
 
+    /*
+    check event mask (for now we only need to do that for GtkWindow)
+    The idea is that if the window has been set to recieve button_press and button_release events
+    (which is not done by default), it likely means that it does something with such events,
+    in which case we should not use them for grabbing
+    */
+    if(0==strcmp(g_type_name(qtcWidgetType(widget)), "GtkWindow") &&
+       (gtk_widget_get_events(widget) & (GDK_BUTTON_PRESS_MASK|GDK_BUTTON_RELEASE_MASK) ) )
+        return;
+        
     if (widget && !isFakeGtk() && !g_object_get_data(G_OBJECT(widget), "QTC_WM_MOVE_HACK_SET"))
     {
         gtk_widget_add_events(widget, GDK_BUTTON_RELEASE_MASK|GDK_BUTTON_PRESS_MASK|GDK_LEAVE_NOTIFY_MASK|GDK_BUTTON1_MOTION_MASK);
+        qtcWMMoveRegisterBtnReleaseHook();
         g_object_set_data(G_OBJECT(widget), "QTC_WM_MOVE_HACK_SET", (gpointer)1);
         g_object_set_data(G_OBJECT(widget), "QTC_WM_MOVE_MOTION_ID",
                           (gpointer)g_signal_connect(G_OBJECT(widget), "motion-notify-event", G_CALLBACK(qtcWMMoveMotion), NULL));
@@ -354,7 +390,5 @@ void qtcWMMoveSetup(GtkWidget *widget)
                           (gpointer)g_signal_connect(G_OBJECT(widget), "style-set", G_CALLBACK(qtcWMMoveStyleSet), NULL));
         g_object_set_data(G_OBJECT(widget), "QTC_WM_MOVE_BUTTON_PRESS_ID",
                           (gpointer)g_signal_connect(G_OBJECT(widget), "button-press-event", G_CALLBACK(qtcWMMoveButtonPress), widget));
-        g_object_set_data(G_OBJECT(widget), "QTC_WM_MOVE_BUTTON_RELEASE_ID",
-                          (gpointer)g_signal_connect(G_OBJECT(widget), "button-release-event", G_CALLBACK(qtcWMMoveButtonRelease), widget));
     }  
 }
