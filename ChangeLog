@@ -1,3 +1,15 @@
+1.8.13
+------
+1. Fix builing with newer glibs - only glib.h itself can be included.
+2. Use squared menus and tooltips if using XRender
+3. Minimum 1ms delay for sub menus.
+
+1.8.12
+------
+1. Fix first shown menu not having a shadow in firefox.
+2. Fix eclipse crash due to resetting of shadows.
+3. Disable shadows for SWT where Gtk<2.12.
+
 1.8.11
 ------
 1. Fix broken titlebars in GIMP, etc.
