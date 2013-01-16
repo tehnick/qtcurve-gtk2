@@ -20,6 +20,7 @@
 
 #include <string.h>
 #include <gtk/gtk.h>
+#include <gdk/gdk.h>
 #include <cairo-xlib.h>
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
@@ -27,6 +28,7 @@
 #include "common.h"
 #include "qt_settings.h"
 #include "shadow.h"
+#include "compatability.h"
 
 #define NUM_SHADOW_PIXMAPS 8
 static unsigned long shadowPixmaps[NUM_SHADOW_PIXMAPS];
@@ -56,6 +58,7 @@ static Pixmap createPixmap(const guint8 *pix)
         cairo_rectangle(cr, 0, 0, shadowSize, shadowSize);
         cairo_fill(cr);
         cairo_destroy(cr);
+        cairo_surface_destroy(dest);
         g_object_unref(pixbuf);
         return pixmap;
     }
@@ -65,6 +68,8 @@ static Pixmap createPixmap(const guint8 *pix)
 
 static gboolean createPixmapHandles()
 {
+    if(DEBUG_ALL==qtSettings.debug) printf(DEBUG_PREFIX "%s\n", __FUNCTION__);
+
     // create atom
     if(!shadowAtom)
     {
@@ -100,6 +105,8 @@ static gboolean createPixmapHandles()
 
 static void installX11Shadows(GtkWidget* widget)
 {
+    if(DEBUG_ALL==qtSettings.debug) printf(DEBUG_PREFIX "%s\n", __FUNCTION__);
+
     if(createPixmapHandles())
     {
         GdkWindow  *window = gtk_widget_get_window(widget);
@@ -116,20 +123,10 @@ static void installX11Shadows(GtkWidget* widget)
     }
 }
 
-#if 0
-static void uninstallX11Shadows(GtkWidget* widget) const
-{
-    if(widget);
-    {
-        GdkWindow  *window = gtk_widget_get_window(widget);
-        GdkDisplay *display = gtk_widget_get_display(widget);
-        XDeleteProperty(GDK_DISPLAY_XDISPLAY(display), GDK_WINDOW_XID(window), shadowAtom);
-    }
-}
-#endif
-
 static gboolean acceptWidget(GtkWidget* widget)
 {
+    if(DEBUG_ALL==qtSettings.debug) printf(DEBUG_PREFIX "%s %X\n", __FUNCTION__, (int)widget);
+
     if(widget && GTK_IS_WINDOW(widget))
     {
         if(GTK_APP_OPEN_OFFICE==qtSettings.app)
@@ -137,12 +134,14 @@ static gboolean acceptWidget(GtkWidget* widget)
         else
         {
             GdkWindowTypeHint hint=gtk_window_get_type_hint(GTK_WINDOW(widget));
+            if(DEBUG_ALL==qtSettings.debug) printf(DEBUG_PREFIX "%s %d\n", __FUNCTION__, (int)hint);
             return
                 hint == GDK_WINDOW_TYPE_HINT_MENU ||
                 hint == GDK_WINDOW_TYPE_HINT_DROPDOWN_MENU ||
                 hint == GDK_WINDOW_TYPE_HINT_POPUP_MENU ||
                 hint == GDK_WINDOW_TYPE_HINT_COMBO ||
-                hint == GDK_WINDOW_TYPE_HINT_TOOLTIP;
+                hint == GDK_WINDOW_TYPE_HINT_TOOLTIP ||
+                (hint == GDK_WINDOW_TYPE_HINT_UTILITY && !qtcWidgetGetParent(widget) && isMozilla()) ; // Firefox URL combo
         }
     }
     return FALSE;
@@ -150,6 +149,8 @@ static gboolean acceptWidget(GtkWidget* widget)
 
 static gboolean shadowDestroy(GtkWidget* widget, gpointer data)
 {
+    if(DEBUG_ALL==qtSettings.debug) printf(DEBUG_PREFIX "%s %X\n", __FUNCTION__, (int)widget);
+    
     if (g_object_get_data(G_OBJECT(widget), "QTC_SHADOW_SET"))
     {
         g_signal_handler_disconnect(G_OBJECT(widget),
@@ -161,6 +162,7 @@ static gboolean shadowDestroy(GtkWidget* widget, gpointer data)
 
 static gboolean registerWidget(GtkWidget* widget)
 {
+    if(DEBUG_ALL==qtSettings.debug) printf(DEBUG_PREFIX "%s %X\n", __FUNCTION__, (int)widget);
     // check widget
     if(!(widget && GTK_IS_WINDOW(widget))) return FALSE;
 
@@ -184,38 +186,23 @@ static gboolean realizeHook(GSignalInvocationHint *sih, guint x, const GValue* p
 {
     GtkWidget* widget=GTK_WIDGET(g_value_get_object(params));
 
+    if(DEBUG_ALL==qtSettings.debug) printf(DEBUG_PREFIX "%s %X\n", __FUNCTION__, (int)widget);
+
     if(!GTK_IS_WIDGET(widget)) return FALSE;
     registerWidget(widget);
     return TRUE;
 }
 
-void qtcShadowReset()
-{
-    GdkScreen* screen = gdk_screen_get_default();
-    if(screen)
-    {
-        Display* display=GDK_DISPLAY_XDISPLAY(gdk_screen_get_display(screen));
-        int i;
-        for(i=0; i<NUM_SHADOW_PIXMAPS; ++i)
-        {
-            if(0!=shadowPixmaps[i])
-            {
-                XFreePixmap(display, shadowPixmaps[i]);
-                shadowPixmaps[i]=0; 
-            }
-        }
-    }
-    shadowSize = 0;
-}
-
 void qtcShadowInitialize()
 {
+#if !GTK_CHECK_VERSION(2, 12, 0)
+    if(GTK_APP_JAVA_SWT==qtSettings.app) return;  // Getting crashes with old Gtk and eclipse :-(
+#endif
+    if(DEBUG_ALL==qtSettings.debug) printf(DEBUG_PREFIX "%s %d\n", __FUNCTION__, qtSettings.app);
     if(!realizeSignalId)
     {
         realizeSignalId = g_signal_lookup("realize", GTK_TYPE_WIDGET);
         if(realizeSignalId)
             realizeHookId = g_signal_add_emission_hook(realizeSignalId, (GQuark)0L, (GSignalEmissionHook)realizeHook, 0, 0L);
     }
-
-    qtcShadowReset();
 }
